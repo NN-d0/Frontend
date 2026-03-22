@@ -1,8 +1,8 @@
-import request from '@/utils/request'
+import request from '../utils/request'
 
 export function getAlarmPageApi(params) {
   return request({
-    url: '/api/core/alarm/page',
+    url: '/core/alarms/page',
     method: 'get',
     params
   })
@@ -10,7 +10,7 @@ export function getAlarmPageApi(params) {
 
 export function confirmAlarmApi(data) {
   return request({
-    url: '/api/core/alarm/confirm',
+    url: '/core/alarm/confirm',
     method: 'post',
     data
   })
@@ -18,7 +18,7 @@ export function confirmAlarmApi(data) {
 
 export function handleAlarmApi(data) {
   return request({
-    url: '/api/core/alarm/handle',
+    url: '/core/alarm/handle',
     method: 'post',
     data
   })

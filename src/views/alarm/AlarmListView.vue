@@ -232,8 +232,8 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import request from '../../utils/request'
-import { getAlarmPageApi, getStationListApi } from '../../api/overview'
+import { getStationListApi } from '../../api/overview'
+import { getAlarmPageApi, confirmAlarmApi, handleAlarmApi } from '../../api/alarm'
 
 const loading = ref(false)
 const stationOptions = ref([])
@@ -362,20 +362,24 @@ const openDetail = (row) => {
 }
 
 const handleConfirm = async (row) => {
-  await ElMessageBox.confirm(`确认将告警【${row.alarmNo}】标记为“已确认”吗？`, '确认操作', {
-    type: 'warning'
-  })
+  try {
+    await ElMessageBox.confirm(`确认将告警【${row.alarmNo}】标记为“已确认”吗？`, '确认操作', {
+      type: 'warning'
+    })
 
-  await request({
-    url: '/core/alarm/confirm',
-    method: 'post',
-    data: {
+    await confirmAlarmApi({
       alarmId: row.id
-    }
-  })
+    })
 
-  ElMessage.success('告警已确认')
-  await loadPage()
+    ElMessage.success('告警已确认')
+    await loadPage()
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') {
+      return
+    }
+    console.error(error)
+    ElMessage.error('告警确认失败')
+  }
 }
 
 const openHandleDialog = (row) => {
@@ -394,13 +398,9 @@ const submitHandle = async () => {
   try {
     handleLoading.value = true
 
-    await request({
-      url: '/core/alarm/handle',
-      method: 'post',
-      data: {
-        alarmId: handleForm.alarmId,
-        handleNote: handleForm.handleNote
-      }
+    await handleAlarmApi({
+      alarmId: handleForm.alarmId,
+      handleNote: handleForm.handleNote
     })
 
     ElMessage.success('告警已处理')
