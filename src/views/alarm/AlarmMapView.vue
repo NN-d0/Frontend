@@ -192,7 +192,7 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import L from 'leaflet'
-import { getAlarmMapPageApi } from '../../api/overview'
+import { getAlarmMapPageApi } from '../../api/alarm'
 
 const loading = ref(false)
 const selectedPoint = ref(null)
