@@ -34,7 +34,7 @@
       </el-col>
     </el-row>
 
-    <el-card class="page-card" shadow="hover" style="margin-top: 16px;">
+    <el-card class="page-card" shadow="hover" style="margin-top: 16px">
       <template #header>
         <div class="card-header">
           <span>查询条件</span>
@@ -55,7 +55,7 @@
             v-model="queryForm.alarmStatus"
             placeholder="请选择状态"
             clearable
-            style="width: 180px;"
+            style="width: 180px"
           >
             <el-option label="未处理" :value="0" />
             <el-option label="已确认" :value="1" />
@@ -76,7 +76,7 @@
       </div>
     </el-card>
 
-    <el-row :gutter="16" style="margin-top: 16px;" class="panel-row">
+    <el-row :gutter="16" style="margin-top: 16px" class="panel-row">
       <el-col :span="15" class="panel-col">
         <el-card class="page-card panel-card" shadow="hover">
           <template #header>
@@ -131,7 +131,7 @@
       </el-col>
     </el-row>
 
-    <el-card class="page-card" shadow="hover" style="margin-top: 16px;">
+    <el-card class="page-card" shadow="hover" style="margin-top: 16px">
       <template #header>
         <div class="card-header">
           <span>告警点位列表</span>
@@ -266,9 +266,9 @@ const getAlarmMeta = (level, status) => {
   }
 
   const statusBorderMap = {
-    0: '#ef4444', // 未处理
-    1: '#2563eb', // 已确认
-    2: '#10b981'  // 已处理
+    0: '#ef4444',
+    1: '#2563eb',
+    2: '#10b981'
   }
 
   const statusTextMap = {
@@ -336,8 +336,8 @@ const buildAlarmMarkerHtml = (item, active = false) => {
   const size = active ? 40 : 30
   const border = active ? `4px solid ${meta.borderColor}` : `3px solid ${meta.borderColor}`
   const glow = active
-    ? `0 0 0 6px rgba(37,99,235,0.16), 0 12px 26px rgba(0,0,0,0.18)`
-    : `0 8px 18px rgba(0,0,0,0.16)`
+    ? '0 0 0 6px rgba(37,99,235,0.16), 0 12px 26px rgba(0,0,0,0.18)'
+    : '0 8px 18px rgba(0,0,0,0.16)'
 
   return `
     <div style="position:relative;transform:translate(-${size / 2}px,-${size + 12}px);">
@@ -358,11 +358,10 @@ const buildAlarmMarkerHtml = (item, active = false) => {
       <div style="
         position:absolute;
         left:50%;
-        bottom:-11px;
-        width:0;
-        height:0;
-        border-left:9px solid transparent;
-        border-right:9px solid transparent;
+        bottom:-10px;
+        width:0;height:0;
+        border-left:8px solid transparent;
+        border-right:8px solid transparent;
         border-top:12px solid ${meta.fillColor};
         transform:translateX(-50%);
       "></div>
@@ -370,41 +369,36 @@ const buildAlarmMarkerHtml = (item, active = false) => {
   `
 }
 
-const buildAlarmPopupHtml = (item) => {
+const buildPopupHtml = (item) => {
   return `
-    <div style="width:310px;padding:2px 2px 6px 2px;">
-      <div style="font-size:16px;font-weight:700;color:#303133;">${item.title || '-'}</div>
+    <div style="width:280px;padding:2px 2px 6px 2px;">
+      <div style="font-size:16px;font-weight:700;color:#303133;">${item.title || '未命名告警'}</div>
       <div style="margin-top:8px;color:#606266;">告警编号：${item.alarmNo || '-'}</div>
-      <div style="margin-top:4px;color:#606266;">站点名称：${item.stationName || '-'}</div>
-      <div style="margin-top:4px;color:#606266;">设备名称：${item.deviceName || '-'}</div>
-      <div style="margin-top:4px;color:#606266;">告警级别：${item.alarmLevel || '-'}</div>
-      <div style="margin-top:4px;color:#606266;">处理状态：${alarmStatusText(item.alarmStatus)}</div>
-      <div style="margin-top:4px;color:#606266;">告警时间：${formatTime(item.alarmTime)}</div>
-      <div style="margin-top:4px;color:#606266;">确认时间：${formatTime(item.confirmTime)}</div>
-      <div style="margin-top:4px;color:#606266;">处理时间：${formatTime(item.handleTime)}</div>
-      <div style="margin-top:4px;color:#606266;">处理备注：${item.handleNote || '-'}</div>
-      <div style="margin-top:10px;padding:10px;background:#f7f9fc;border-radius:8px;color:#303133;">
-        ${item.content || '-'}
-      </div>
+      <div style="margin-top:6px;color:#606266;">站点名称：${item.stationName || '-'}</div>
+      <div style="margin-top:6px;color:#606266;">设备名称：${item.deviceName || '-'}</div>
+      <div style="margin-top:6px;color:#606266;">告警类型：${item.alarmType || '-'}</div>
+      <div style="margin-top:6px;color:#606266;">告警时间：${formatTime(item.alarmTime)}</div>
+      <div style="margin-top:10px;color:#303133;line-height:1.7;">${item.content || '-'}</div>
     </div>
   `
 }
 
-const createAlarmIcon = (item, active = false) => {
-  const size = active ? 40 : 30
+const buildIcon = (item, active = false) => {
   return L.divIcon({
     className: 'custom-alarm-marker',
     html: buildAlarmMarkerHtml(item, active),
-    iconSize: [size, size + 14],
-    iconAnchor: [size / 2, size + 12],
-    popupAnchor: [0, -(size - 4)]
+    iconSize: [40, 52],
+    iconAnchor: [20, 52],
+    popupAnchor: [0, -42]
   })
 }
 
 const initMap = () => {
-  if (mapInstance) return
+  if (mapInstance || !mapRef.value) return
 
-  mapInstance = L.map(mapRef.value).setView([22.55, 114.0], 10)
+  mapInstance = L.map(mapRef.value, {
+    zoomControl: true
+  }).setView([22.55, 114.05], 10)
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap'
@@ -413,43 +407,44 @@ const initMap = () => {
   markerLayer = L.layerGroup().addTo(mapInstance)
 }
 
+const highlightMarker = (alarmId) => {
+  markerMap.forEach(({ marker, item }, id) => {
+    marker.setIcon(buildIcon(item, String(id) === String(alarmId)))
+  })
+}
+
 const renderMap = async () => {
   initMap()
 
-  markerMap.clear()
+  if (!markerLayer) return
   markerLayer.clearLayers()
+  markerMap.clear()
 
   const displayPoints = buildDisplayPoints(pageState.records)
 
   displayPoints.forEach(item => {
-    const active = selectedPoint.value && selectedPoint.value.id === item.id
-
     const marker = L.marker(
       [Number(item.displayLat), Number(item.displayLng)],
-      { icon: createAlarmIcon(item, active) }
+      { icon: buildIcon(item, selectedPoint.value && String(selectedPoint.value.id) === String(item.id)) }
     )
 
-    marker.bindPopup(buildAlarmPopupHtml(item), {
-      maxWidth: 350,
+    marker.bindPopup(buildPopupHtml(item), {
+      maxWidth: 320,
       className: 'beauty-popup'
     })
 
-    marker.on('click', async () => {
-      selectedPoint.value = item
-      await renderMap()
-      const activeMarker = markerMap.get(item.id)
-      if (activeMarker) {
-        activeMarker.openPopup()
-      }
+    marker.on('click', () => {
+      selectedPoint.value = { ...item }
+      highlightMarker(item.id)
     })
 
     marker.addTo(markerLayer)
-    markerMap.set(item.id, marker)
+    markerMap.set(String(item.id), { marker, item })
   })
 
   if (displayPoints.length > 0) {
     const latlngs = displayPoints.map(item => [Number(item.displayLat), Number(item.displayLng)])
-    mapInstance.fitBounds(latlngs, { padding: [30, 30] })
+    mapInstance.fitBounds(latlngs, { padding: [28, 28] })
   }
 
   setTimeout(() => {
@@ -461,25 +456,19 @@ const loadData = async () => {
   try {
     loading.value = true
 
-    const pageRes = await getAlarmMapPageApi({
+    const res = await getAlarmMapPageApi({
       current: queryForm.current,
-      size: FIXED_PAGE_SIZE,
+      size: queryForm.size,
       alarmStatus: queryForm.alarmStatus === '' ? undefined : queryForm.alarmStatus
     })
 
-    const pageData = pageRes.data || {}
-    pageState.total = pageData.total || 0
-    pageState.records = pageData.records || []
+    const data = res.data || {}
+    pageState.total = data.total || 0
+    pageState.records = data.records || []
 
-    if (pageState.records.length > 0) {
-      if (!selectedPoint.value) {
-        selectedPoint.value = pageState.records[0]
-      } else {
-        const matched = pageState.records.find(item => item.id === selectedPoint.value.id)
-        selectedPoint.value = matched || pageState.records[0]
-      }
-    } else {
-      selectedPoint.value = null
+    if (selectedPoint.value) {
+      const match = pageState.records.find(item => String(item.id) === String(selectedPoint.value.id))
+      selectedPoint.value = match ? { ...match } : null
     }
 
     await nextTick()
@@ -491,24 +480,6 @@ const loadData = async () => {
   }
 }
 
-const focusAlarm = async (row) => {
-  if (!row || !mapInstance) return
-
-  selectedPoint.value = row
-  await renderMap()
-
-  const marker = markerMap.get(row.id)
-  if (marker) {
-    marker.openPopup()
-    const latlng = marker.getLatLng()
-    mapInstance.setView([latlng.lat, latlng.lng], 13)
-  }
-}
-
-const handleRowSelect = async (row) => {
-  await focusAlarm(row)
-}
-
 const handleSearch = async () => {
   queryForm.current = 1
   await loadData()
@@ -516,7 +487,6 @@ const handleSearch = async () => {
 
 const resetQuery = async () => {
   queryForm.current = 1
-  queryForm.size = FIXED_PAGE_SIZE
   queryForm.alarmStatus = ''
   selectedPoint.value = null
   await loadData()
@@ -527,17 +497,34 @@ const handleCurrentChange = async (page) => {
   await loadData()
 }
 
+const handleRowSelect = (row) => {
+  if (!row) return
+  selectedPoint.value = { ...row }
+  highlightMarker(row.id)
+
+  const markerEntry = markerMap.get(String(row.id))
+  if (markerEntry) {
+    mapInstance.setView(markerEntry.marker.getLatLng(), Math.max(mapInstance.getZoom(), 12))
+    markerEntry.marker.openPopup()
+  }
+}
+
 const handleResize = () => {
-  if (mapInstance) mapInstance.invalidateSize()
+  if (mapInstance) {
+    mapInstance.invalidateSize()
+  }
 }
 
 onMounted(async () => {
+  await nextTick()
+  initMap()
   await loadData()
   window.addEventListener('resize', handleResize)
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
+
   if (mapInstance) {
     mapInstance.remove()
     mapInstance = null
@@ -643,20 +630,17 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-.map-box {
-  width: 100%;
-  height: 100%;
-}
-
 .detail-wrap {
-  width: 100%;
   height: 100%;
   overflow: auto;
-  padding-right: 2px;
+}
+
+.map-box {
+  min-height: 560px;
 }
 
 .pagination-wrap {
-  margin-top: 16px;
+  margin-top: 18px;
   display: flex;
   justify-content: flex-end;
 }

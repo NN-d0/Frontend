@@ -1,22 +1,20 @@
 <template>
   <el-container class="layout-shell">
-    <el-aside width="236px" class="layout-aside">
+    <el-aside width="260px" class="layout-aside">
       <div class="brand-box">
         <div class="brand-logo-stage">
           <div class="brand-logo-frame">
-            <img class="brand-school-logo" src="/images/school-logo.png" alt="学校标识" />
+            <img class="brand-school-logo" src="/images/school-logo.png" alt="school-logo" />
           </div>
         </div>
       </div>
 
       <div class="menu-wrap">
         <el-menu
-          class="side-menu"
           :default-active="route.path"
           :default-openeds="defaultOpeneds"
-          background-color="transparent"
-          text-color="#8ea3c0"
-          active-text-color="#ffffff"
+          class="side-menu"
+          :unique-opened="false"
           @select="handleMenuSelect"
         >
           <el-sub-menu index="overview-group">
@@ -59,7 +57,7 @@
               <el-icon><Setting /></el-icon>
               <span>系统管理</span>
             </template>
-            <el-menu-item index="/system/settings">全局设置</el-menu-item>
+            <el-menu-item index="/system/settings">告警阈值设置</el-menu-item>
           </el-sub-menu>
         </el-menu>
       </div>
@@ -83,7 +81,7 @@
       <el-header class="layout-header" :class="{ 'layout-header--with-system-title': isOverviewPage }">
         <div class="header-left">
           <div class="page-title">{{ pageTitle }}</div>
-          <div class="page-subtitle">无线电频谱智能监测系统 </div>
+          <div class="page-subtitle">无线电频谱智能监测系统</div>
         </div>
 
         <div class="header-right">
@@ -145,7 +143,7 @@
             </div>
             <div class="tip-item">
               <span class="tip-dot"></span>
-              修改用户名后，为保证登录状态一致，将自动退出重新登录
+              用户名仅作账号展示，当前版本不支持在这里修改
             </div>
             <div class="tip-item">
               <span class="tip-dot"></span>
@@ -172,8 +170,8 @@
             >
               <el-row :gutter="16">
                 <el-col :span="12">
-                  <el-form-item label="用户名" prop="username">
-                    <el-input v-model="profileForm.username" placeholder="请输入用户名" />
+                  <el-form-item label="用户名">
+                    <el-input v-model="profileForm.username" disabled placeholder="当前登录账号" />
                   </el-form-item>
                 </el-col>
 
@@ -259,11 +257,12 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Bell, Cpu, DataLine, Monitor, Setting } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   getCurrentUserProfileApi,
   updateCurrentUserPasswordApi,
-  updateCurrentUserProfileApi
+  updateCurrentUserProfileApi,
+  uploadCurrentUserAvatarApi
 } from '../../api/user'
 
 const router = useRouter()
@@ -297,7 +296,6 @@ const passwordForm = reactive({
 })
 
 const profileRules = {
-  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   nickName: [{ required: true, message: '请输入昵称', trigger: 'blur' }]
 }
 
@@ -355,7 +353,7 @@ const triggerAvatarSelect = () => {
   avatarInputRef.value?.click()
 }
 
-const handleAvatarFileChange = (event) => {
+const handleAvatarFileChange = async (event) => {
   const file = event.target.files?.[0]
   if (!file) return
 
@@ -374,42 +372,42 @@ const handleAvatarFileChange = (event) => {
     return
   }
 
-  const reader = new FileReader()
-  reader.onload = (e) => {
-    profileForm.avatarUrl = e.target?.result || ''
-    ElMessage.success('头像已加载，请点击“保存基本资料”正式保存')
-  }
-  reader.readAsDataURL(file)
+  try {
+    profileLoading.value = true
+    const formData = new FormData()
+    formData.append('file', file)
 
-  event.target.value = ''
+    const res = await uploadCurrentUserAvatarApi(formData)
+    const avatarUrl = res?.data?.avatarUrl || ''
+
+    if (!avatarUrl) {
+      ElMessage.warning('头像上传成功，但未获取到头像地址')
+      return
+    }
+
+    profileForm.avatarUrl = avatarUrl
+    ElMessage.success('头像上传成功，请点击“保存基本资料”正式保存')
+  } catch (error) {
+    console.error(error)
+    ElMessage.error(error?.message || '头像上传失败')
+  } finally {
+    profileLoading.value = false
+    event.target.value = ''
+  }
 }
 
 const handleSaveProfile = async () => {
   await profileFormRef.value.validate()
 
-  const oldUsername = profile.username
-
   try {
     profileLoading.value = true
 
     await updateCurrentUserProfileApi({
-      username: profileForm.username,
       nickName: profileForm.nickName,
       avatarUrl: profileForm.avatarUrl
     })
 
     ElMessage.success('个人资料保存成功')
-
-    const usernameChanged = oldUsername && oldUsername !== profileForm.username
-
-    if (usernameChanged) {
-      ElMessage.success('用户名已修改，请重新登录后继续使用')
-      setTimeout(() => {
-        handleLogout()
-      }, 1200)
-      return
-    }
-
     await loadProfile()
     profileDialogVisible.value = false
   } finally {
@@ -430,8 +428,7 @@ const handleChangePassword = async () => {
 
     await updateCurrentUserPasswordApi({
       oldPassword: passwordForm.oldPassword,
-      newPassword: passwordForm.newPassword,
-      confirmPassword: passwordForm.confirmPassword
+      newPassword: passwordForm.newPassword
     })
 
     ElMessage.success('密码修改成功')
@@ -443,9 +440,28 @@ const handleChangePassword = async () => {
   }
 }
 
-const handleLogout = () => {
-  localStorage.removeItem('radio_token')
-  router.replace('/login')
+const handleLogout = async () => {
+  try {
+    await ElMessageBox.confirm(
+      '确认退出当前登录账号吗？',
+      '退出提示',
+      {
+        confirmButtonText: '确认退出',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+
+    localStorage.removeItem('radio_token')
+    localStorage.removeItem('radio_user')
+    ElMessage.success('已退出登录')
+    router.replace('/login')
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') {
+      return
+    }
+    console.error(error)
+  }
 }
 
 onMounted(async () => {
@@ -496,7 +512,6 @@ body,
   overflow: hidden;
   border-right: 1px solid rgba(255, 255, 255, 0.04);
   box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.03);
-
   display: flex;
   flex-direction: column;
 }
@@ -546,38 +561,6 @@ body,
   height: 100%;
   object-fit: contain;
   filter: contrast(1.15) saturate(1.15);
-}
-
-.brand-logo {
-  width: 46px;
-  height: 46px;
-  border-radius: 14px;
-  background: linear-gradient(135deg, #5ea2ff, #2d6df6);
-  color: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
-  font-weight: 700;
-  box-shadow: 0 12px 24px rgba(45, 109, 246, 0.28);
-}
-
-.brand-content {
-  min-width: 0;
-}
-
-.brand-title {
-  font-size: 22px;
-  font-weight: 800;
-  color: #ffffff;
-  letter-spacing: 0.5px;
-}
-
-.brand-sub {
-  margin-top: 5px;
-  font-size: 12px;
-  color: #9ab0ca;
-  letter-spacing: 1px;
 }
 
 .menu-wrap {
@@ -856,256 +839,135 @@ body,
 
 .page-card .el-card__header,
 .overview-card .el-card__header {
+  border-bottom: 1px solid rgba(238, 243, 250, 0.95) !important;
+}
+
+.profile-center-dialog .el-dialog {
+  border-radius: 28px;
+  overflow: hidden;
+}
+
+.profile-center-dialog .el-dialog__header {
+  padding: 22px 28px 12px;
   border-bottom: 1px solid #eef3f8;
-  padding: 18px 22px;
+  margin-right: 0;
 }
 
-.page-card .el-card__body,
-.overview-card .el-card__body {
-  padding: 18px 22px;
-}
-
-.metric-title {
-  color: #8b98ac;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.metric-value {
-  margin-top: 12px;
-  font-size: 36px;
-  line-height: 1;
-  font-weight: 800;
-  color: #1f2a37;
-  letter-spacing: 0.4px;
-}
-
-.metric-sub {
-  margin-top: 12px;
-  color: #7fbf5b;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.map-box {
-  width: 100%;
-  height: 390px;
-  border-radius: 18px;
-  overflow: hidden;
-}
-
-.chart-box {
-  width: 100%;
-  height: 390px;
-}
-
-.pagination-wrap {
-  margin-top: 18px;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.el-button {
-  border-radius: 12px !important;
-  font-weight: 600;
-}
-
-.el-input__wrapper,
-.el-select__wrapper,
-.el-textarea__inner,
-.el-input-number,
-.el-picker__popper,
-.el-date-editor.el-input__wrapper {
-  border-radius: 12px !important;
-}
-
-.el-input__wrapper,
-.el-select__wrapper {
-  min-height: 40px;
-  box-shadow: 0 0 0 1px #e4ebf4 inset !important;
-}
-
-.el-input__wrapper.is-focus,
-.el-select__wrapper.is-focused {
-  box-shadow: 0 0 0 1px #3b82f6 inset !important;
-}
-
-.el-textarea__inner {
-  border: 1px solid #e4ebf4;
-  box-shadow: none !important;
-}
-
-.el-form-item__label {
-  color: #5e6b7f !important;
-  font-weight: 700;
-}
-
-.el-table {
-  border-radius: 18px;
-  overflow: hidden;
-}
-
-.el-table th.el-table__cell {
-  background: #f7fafe !important;
-  color: #5d6a7d;
-  font-weight: 700;
-}
-
-.el-table tr {
-  transition: background 0.2s ease;
-}
-
-.el-table .el-table__row:hover > td.el-table__cell {
-  background: #f8fbff !important;
-}
-
-.el-pagination .btn-prev,
-.el-pagination .btn-next,
-.el-pagination .el-pager li {
-  border-radius: 10px !important;
-}
-
-.el-dialog {
-  border-radius: 26px !important;
-  overflow: hidden;
-}
-
-.el-dialog__header {
-  padding: 22px 24px 14px;
-  border-bottom: 1px solid #eef3f8;
-}
-
-.el-dialog__title {
+.profile-center-dialog .el-dialog__title {
   font-size: 20px;
   font-weight: 800;
   color: #1f2a37;
 }
 
-.el-dialog__body {
-  padding: 22px 24px !important;
-}
-
-.el-dialog__footer {
-  padding: 14px 24px 22px !important;
-  border-top: 1px solid #eef3f8;
-}
-
-.el-tabs__item {
-  font-weight: 700;
-}
-
-.el-tabs__active-bar {
-  height: 3px;
-  border-radius: 999px;
+.profile-center-dialog .el-dialog__body {
+  padding: 0;
 }
 
 .profile-center-shell {
   display: grid;
-  grid-template-columns: 300px 1fr;
-  gap: 20px;
+  grid-template-columns: 320px 1fr;
+  min-height: 560px;
 }
 
 .profile-left-panel {
   position: relative;
-  padding: 0 20px 22px;
-  border-radius: 24px;
-  background: linear-gradient(180deg, #ffffff 0%, #f7faff 100%);
-  border: 1px solid #e7edf5;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
-  overflow: hidden;
+  padding: 0 26px 28px;
+  background:
+    radial-gradient(circle at top left, rgba(59, 130, 246, 0.18), transparent 34%),
+    linear-gradient(180deg, #f7fbff 0%, #eef5ff 100%);
+  border-right: 1px solid #edf2f8;
 }
 
 .profile-cover {
-  height: 110px;
-  margin: 0 -20px;
+  height: 140px;
+  margin: 0 -26px;
   background:
-    radial-gradient(circle at 20% 20%, rgba(96, 165, 250, 0.35), transparent 35%),
-    linear-gradient(135deg, #dceeff 0%, #eef5ff 50%, #f9fbff 100%);
-  border-bottom: 1px solid #eef3f8;
+    linear-gradient(135deg, rgba(37, 99, 235, 0.96) 0%, rgba(96, 165, 250, 0.88) 100%);
+  border-bottom-left-radius: 32px;
+  border-bottom-right-radius: 32px;
+  box-shadow: inset 0 -14px 28px rgba(255, 255, 255, 0.12);
 }
 
 .profile-avatar-wrap {
+  margin-top: -48px;
   display: flex;
   justify-content: center;
-  margin-top: -48px;
 }
 
 .profile-avatar-large {
-  border: 5px solid #ffffff;
-  box-shadow: 0 16px 30px rgba(59, 130, 246, 0.18);
+  border: 5px solid rgba(255, 255, 255, 0.98);
+  box-shadow: 0 16px 30px rgba(59, 130, 246, 0.2);
 }
 
 .profile-user-name {
   margin-top: 16px;
   text-align: center;
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 800;
   color: #1f2a37;
 }
 
 .profile-user-account {
-  margin-top: 6px;
+  margin-top: 8px;
   text-align: center;
-  color: #8a97ab;
   font-size: 13px;
+  color: #8a97ab;
 }
 
 .profile-upload-box {
-  margin-top: 20px;
+  margin-top: 24px;
+  padding: 18px 18px 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid #e5edf7;
+  box-shadow: 0 10px 24px rgba(31, 42, 55, 0.05);
   text-align: center;
 }
 
 .profile-upload-tip {
   margin-top: 10px;
-  color: #98a6ba;
   font-size: 12px;
+  color: #94a3b8;
 }
 
 .profile-left-tips {
-  margin-top: 24px;
-  padding: 14px 14px 6px;
-  border-radius: 16px;
-  background: #f7faff;
-  border: 1px solid #edf3fb;
+  margin-top: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .tip-item {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin-bottom: 10px;
-  color: #637086;
+  align-items: center;
+  gap: 10px;
   font-size: 13px;
+  color: #64748b;
   line-height: 1.7;
 }
 
 .tip-dot {
   width: 8px;
   height: 8px;
-  margin-top: 7px;
-  border-radius: 50%;
-  background: #3b82f6;
   flex-shrink: 0;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #60a5fa 0%, #2563eb 100%);
 }
 
 .profile-right-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
+  padding: 22px 24px 24px;
+  background: #fbfdff;
+  overflow-y: auto;
 }
 
 .profile-section-card {
   border-radius: 22px !important;
-  border: 1px solid #e7edf5 !important;
-  box-shadow: none !important;
-  overflow: hidden;
+  border: 1px solid #eaf0f7 !important;
+  box-shadow: 0 12px 28px rgba(31, 42, 55, 0.05) !important;
+}
+
+.profile-section-card + .profile-section-card {
+  margin-top: 18px;
 }
 
 .section-header {
@@ -1131,37 +993,26 @@ body,
 }
 
 .form-actions {
+  margin-top: 10px;
   display: flex;
   justify-content: flex-end;
-  margin-top: 6px;
 }
 
-.beauty-popup .leaflet-popup-content-wrapper {
-  border-radius: 16px;
-  box-shadow: 0 14px 30px rgba(31, 42, 55, 0.16);
+.form-actions .el-button {
+  min-width: 132px;
+  height: 40px;
+  border-radius: 12px;
+  font-weight: 700;
 }
 
-.beauty-popup .leaflet-popup-tip {
-  box-shadow: none;
-}
-
-::-webkit-scrollbar {
-  width: 9px;
-  height: 9px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(137, 154, 179, 0.4);
-  border-radius: 999px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-@media (max-width: 1200px) {
+@media (max-width: 1100px) {
   .profile-center-shell {
     grid-template-columns: 1fr;
+  }
+
+  .profile-left-panel {
+    border-right: none;
+    border-bottom: 1px solid #edf2f8;
   }
 }
 </style>

@@ -39,7 +39,7 @@
         <div class="card-header">
           <div>
             <div class="header-title">实时监测参数</div>
-            <div class="header-subtitle">优先 WebSocket，失败时自动使用历史快照轮询兜底</div>
+            <div class="header-subtitle">优先 WebSocket，失败时自动使用实时接口轮询兜底</div>
           </div>
           <div class="header-actions">
             <el-tag :type="connectionTagType">
@@ -94,7 +94,7 @@
             <div class="card-header">
               <div>
                 <div class="header-title">实时频谱折线图</div>
-                <div class="header-subtitle">升级为更适合演示和截图的频谱曲线样式</div>
+                <div class="header-subtitle">使用标准实时接口字段进行展示</div>
               </div>
               <div class="chart-tags">
                 <el-tag type="primary" effect="plain">渐变面积</el-tag>
@@ -143,7 +143,7 @@
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import * as echarts from 'echarts'
 import { ElMessage } from 'element-plus'
-import { getHistoryPageApi, getStationListApi } from '../../api/overview'
+import { getRealtimeLatestApi, getStationListApi } from '../../api/overview'
 
 const stationOptions = ref([])
 const chartRef = ref(null)
@@ -156,7 +156,7 @@ const queryForm = reactive({
   stationId: ''
 })
 
-const latestSnapshot = reactive({
+const createDefaultSnapshot = () => ({
   stationId: '',
   stationName: '',
   deviceName: '',
@@ -171,14 +171,23 @@ const latestSnapshot = reactive({
   powerPointsJson: '[]'
 })
 
+const latestSnapshot = reactive(createDefaultSnapshot())
+
 let chartInstance = null
 let pollingTimer = null
 let socket = null
 let wsSessionId = 0
 let networkWarnShown = false
 
+const normalizeId = (value) => {
+  if (value === null || value === undefined || value === '') return ''
+  const numberValue = Number(value)
+  return Number.isNaN(numberValue) ? String(value) : numberValue
+}
+
 const currentStationName = computed(() => {
-  const match = stationOptions.value.find(item => item.id === queryForm.stationId)
+  const currentId = normalizeId(queryForm.stationId)
+  const match = stationOptions.value.find(item => normalizeId(item.id) === currentId)
   return match?.stationName || latestSnapshot.stationName || ''
 })
 
@@ -206,11 +215,13 @@ const formatTime = (value) => {
 
 const parsePoints = (value) => {
   if (!value) return []
-  if (Array.isArray(value)) return value.map(Number)
+  if (Array.isArray(value)) {
+    return value.map(item => Number(item))
+  }
 
   try {
     const parsed = JSON.parse(value)
-    return Array.isArray(parsed) ? parsed.map(Number) : []
+    return Array.isArray(parsed) ? parsed.map(item => Number(item)) : []
   } catch (error) {
     return []
   }
@@ -378,6 +389,12 @@ const clearNetworkError = () => {
   networkWarnShown = false
 }
 
+const resetSnapshot = async () => {
+  Object.assign(latestSnapshot, createDefaultSnapshot())
+  await nextTick()
+  renderChart()
+}
+
 const getReadableErrorText = (error) => {
   const msg = String(error?.message || '')
   if (!msg) return '未知异常'
@@ -387,25 +404,23 @@ const getReadableErrorText = (error) => {
 }
 
 const applySnapshot = async (raw) => {
-  if (!raw) return
+  if (!raw) {
+    await resetSnapshot()
+    return
+  }
 
-  latestSnapshot.stationId = raw.stationId ?? latestSnapshot.stationId
+  latestSnapshot.stationId = raw.stationId ?? ''
   latestSnapshot.stationName = raw.stationName ?? ''
   latestSnapshot.deviceName = raw.deviceName ?? ''
   latestSnapshot.taskName = raw.taskName ?? ''
   latestSnapshot.signalType = raw.signalType ?? ''
-  latestSnapshot.aiLabel = raw.aiLabel ?? raw.predictLabel ?? ''
-  latestSnapshot.centerFreqMhz = raw.centerFreqMhz ?? raw.centerFreq ?? null
-  latestSnapshot.bandwidthKhz = raw.bandwidthKhz ?? raw.bandwidth ?? null
-  latestSnapshot.peakPowerDbm = raw.peakPowerDbm ?? raw.peakPower ?? null
-  latestSnapshot.snrDb = raw.snrDb ?? raw.snr ?? null
-  latestSnapshot.captureTime = raw.captureTime ?? raw.createTime ?? raw.snapshotTime ?? ''
-  latestSnapshot.powerPointsJson =
-    raw.powerPointsJson ??
-    raw.powerListJson ??
-    raw.spectrumPointsJson ??
-    raw.pointsJson ??
-    '[]'
+  latestSnapshot.aiLabel = raw.aiLabel ?? ''
+  latestSnapshot.centerFreqMhz = raw.centerFreqMhz ?? null
+  latestSnapshot.bandwidthKhz = raw.bandwidthKhz ?? null
+  latestSnapshot.peakPowerDbm = raw.peakPowerDbm ?? null
+  latestSnapshot.snrDb = raw.snrDb ?? null
+  latestSnapshot.captureTime = raw.captureTime ?? ''
+  latestSnapshot.powerPointsJson = raw.powerPointsJson ?? '[]'
 
   clearNetworkError()
   await nextTick()
@@ -413,23 +428,18 @@ const applySnapshot = async (raw) => {
 }
 
 const loadLatestSpectrum = async ({ silent = false } = {}) => {
-  if (!queryForm.stationId) return
+  if (!queryForm.stationId) {
+    await resetSnapshot()
+    return
+  }
 
   try {
-    const res = await getHistoryPageApi({
-      current: 1,
-      size: 1,
+    const res = await getRealtimeLatestApi({
       stationId: queryForm.stationId
     })
 
-    const data = res?.data || {}
-    const records = data.records || []
-
-    if (records.length > 0) {
-      await applySnapshot(records[0])
-    } else {
-      clearNetworkError()
-    }
+    const snapshot = res?.data || null
+    await applySnapshot(snapshot)
   } catch (error) {
     networkErrorMessage.value = getReadableErrorText(error)
 
@@ -489,8 +499,11 @@ const disconnectWs = () => {
   currentSocket.onerror = null
   currentSocket.onclose = null
 
-  if (currentSocket.readyState === WebSocket.OPEN) {
-    currentSocket.close(1000, 'manual close')
+  if (
+    currentSocket.readyState === WebSocket.OPEN ||
+    currentSocket.readyState === WebSocket.CONNECTING
+  ) {
+    currentSocket.close()
   }
 }
 
@@ -540,7 +553,13 @@ const connectWs = () => {
 }
 
 const handleStationChange = async () => {
-  if (!queryForm.stationId) return
+  if (!queryForm.stationId) {
+    disconnectWs()
+    stopPolling()
+    await resetSnapshot()
+    return
+  }
+
   await loadLatestSpectrum({ silent: true })
   connectWs()
   startPolling()
@@ -552,7 +571,7 @@ const manualRefresh = async () => {
 
 const loadStations = async () => {
   const res = await getStationListApi()
-  stationOptions.value = res.data || []
+  stationOptions.value = res?.data || []
 
   if (!queryForm.stationId && stationOptions.value.length > 0) {
     queryForm.stationId = stationOptions.value[0].id
@@ -650,12 +669,15 @@ onUnmounted(() => {
 .metric-blue::before {
   background: linear-gradient(90deg, #3b82f6, #60a5fa);
 }
+
 .metric-cyan::before {
   background: linear-gradient(90deg, #06b6d4, #67e8f9);
 }
+
 .metric-green::before {
   background: linear-gradient(90deg, #22c55e, #86efac);
 }
+
 .metric-orange::before {
   background: linear-gradient(90deg, #f59e0b, #fcd34d);
 }

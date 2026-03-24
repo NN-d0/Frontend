@@ -131,11 +131,11 @@ import { nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import * as echarts from 'echarts'
 import L from 'leaflet'
 import {
-  getAlarmPageApi,
   getDeviceListApi,
   getOverviewSummaryApi,
   getStationListApi
 } from '../../api/overview'
+import { getAlarmPageApi } from '../../api/alarm'
 
 const loading = ref(false)
 
@@ -473,7 +473,6 @@ const loadOverviewData = async () => {
     Object.assign(summary, summaryRes.data || {})
     stationList.value = stationRes.data || []
     deviceList.value = deviceRes.data || []
-
 
     recomputeStationSummary()
 

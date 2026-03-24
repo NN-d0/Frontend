@@ -1,18 +1,8 @@
 import request from '../utils/request'
 
 /**
- * 登录接口
- * 如果你后端实际不是 /system/auth/login
- * 只需要把这里的 url 改成你的真实登录地址
+ * 查询当前登录用户资料
  */
-export function loginApi(data) {
-  return request({
-    url: '/system/auth/login',
-    method: 'post',
-    data
-  })
-}
-
 export function getCurrentUserProfileApi() {
   return request({
     url: '/system/user/profile',
@@ -20,6 +10,10 @@ export function getCurrentUserProfileApi() {
   })
 }
 
+/**
+ * 更新当前登录用户资料
+ * 当前仅允许修改：nickName、avatarUrl
+ */
 export function updateCurrentUserProfileApi(data) {
   return request({
     url: '/system/user/profile/update',
@@ -28,10 +22,25 @@ export function updateCurrentUserProfileApi(data) {
   })
 }
 
+/**
+ * 修改当前登录用户密码
+ */
 export function updateCurrentUserPasswordApi(data) {
   return request({
     url: '/system/user/password/update',
     method: 'put',
+    data
+  })
+}
+
+/**
+ * 上传当前登录用户头像
+ * 传入 FormData，字段名必须为 file
+ */
+export function uploadCurrentUserAvatarApi(data) {
+  return request({
+    url: '/system/user/avatar/upload',
+    method: 'post',
     data
   })
 }

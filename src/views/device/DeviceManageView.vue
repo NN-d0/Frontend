@@ -90,7 +90,7 @@
         <div class="card-header">
           <div>
             <div class="header-title">设备状态地图</div>
-            <div class="header-subtitle">按站点展示设备运行状态与数量</div>
+            <div class="header-subtitle">按站点展示设备状态与数量</div>
           </div>
           <div class="legend-row">
             <span class="legend-item"><i class="legend-dot success"></i>全部运行</span>
@@ -102,7 +102,7 @@
       </template>
 
       <div class="map-tip">
-        点击站点标记可查看该站点下的设备明细；点击“地图选择/新建站点”可直接在地图上新增站点并用于设备录入。
+        点击站点标记可以查看该站点设备明细。点击“地图选择/新建站点”可以直接在地图上选中已有站点，或者点击地图空白处新建站点。
       </div>
       <div ref="deviceMapRef" class="map-box"></div>
     </el-card>
@@ -112,19 +112,26 @@
         <div class="card-header">
           <div>
             <div class="header-title">设备列表</div>
-            <div class="header-subtitle">支持分页浏览、修改、删除</div>
+            <div class="header-subtitle">支持分页浏览、新增、修改、删除</div>
           </div>
           <el-tag type="info">共 {{ pageState.total }} 条</el-tag>
         </div>
       </template>
 
-      <el-table :data="pageState.records" stripe border v-loading="loading" empty-text="暂无设备数据" class="beauty-table">
+      <el-table
+        :data="pageState.records"
+        stripe
+        border
+        v-loading="loading"
+        empty-text="暂无设备数据"
+        class="beauty-table"
+      >
         <el-table-column type="index" label="序号" width="70" />
         <el-table-column prop="deviceCode" label="设备编码" min-width="150" />
         <el-table-column prop="deviceName" label="设备名称" min-width="180" />
         <el-table-column prop="stationName" label="所属站点" min-width="140" />
         <el-table-column prop="deviceType" label="设备类型" min-width="150" />
-        <el-table-column prop="ipAddr" label="IP 地址" min-width="140" />
+        <el-table-column prop="ipAddr" label="IP 地址" min-width="150" />
         <el-table-column prop="runStatus" label="运行状态" width="110">
           <template #default="scope">
             <el-tag :type="scope.row.runStatus === 1 ? 'success' : 'danger'">
@@ -163,6 +170,7 @@
     <el-dialog v-model="dialogVisible" :title="dialogMode === 'create' ? '新增设备' : '修改设备'" width="760px">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="96px">
         <div class="dialog-section-title">基础信息</div>
+
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="设备编码" prop="deviceCode">
@@ -196,6 +204,7 @@
         </el-row>
 
         <div class="dialog-section-title">部署信息</div>
+
         <el-form-item label="所属站点" prop="stationId">
           <div class="station-picker-row">
             <el-select v-model="form.stationId" filterable placeholder="请选择站点" style="flex: 1;">
@@ -223,7 +232,7 @@
       </el-form>
 
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button @click="handleDeviceDialogClose">取消</el-button>
         <el-button type="primary" :loading="submitLoading" @click="handleSubmit">保存</el-button>
       </template>
     </el-dialog>
@@ -239,6 +248,7 @@
         2. 点击地图空白位置，可新建站点并自动选中。
       </div>
       <div ref="stationMapRef" class="map-box"></div>
+
       <template #footer>
         <el-button @click="mapDialogVisible = false">关闭</el-button>
       </template>
@@ -263,13 +273,13 @@
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="经度" prop="longitude">
-              <el-input v-model="stationForm.longitude" disabled />
+              <el-input v-model="stationForm.longitude" placeholder="请输入经度" />
             </el-form-item>
           </el-col>
 
           <el-col :span="12">
             <el-form-item label="纬度" prop="latitude">
-              <el-input v-model="stationForm.latitude" disabled />
+              <el-input v-model="stationForm.latitude" placeholder="请输入纬度" />
             </el-form-item>
           </el-col>
         </el-row>
@@ -280,10 +290,8 @@
       </el-form>
 
       <template #footer>
-        <el-button @click="stationDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="stationSubmitLoading" @click="handleCreateStation">
-          保存站点并选中
-        </el-button>
+        <el-button @click="handleStationDialogClose">取消</el-button>
+        <el-button type="primary" :loading="stationSubmitLoading" @click="handleCreateStation">保存站点</el-button>
       </template>
     </el-dialog>
   </div>
@@ -391,7 +399,7 @@ const buildStationDeviceMap = () => {
 }
 
 const getStationStatusMeta = (devices) => {
-  if (!devices || devices.length === 0) {
+  if (!devices || !devices.length) {
     return { color: '#909399', text: '暂无设备', badge: '0' }
   }
 
@@ -401,11 +409,9 @@ const getStationStatusMeta = (devices) => {
   if (running > 0 && stop === 0) {
     return { color: '#67c23a', text: '全部运行', badge: `${devices.length}` }
   }
-
   if (running > 0 && stop > 0) {
     return { color: '#e6a23c', text: '混合状态', badge: `${devices.length}` }
   }
-
   if (running === 0 && stop > 0) {
     return { color: '#f56c6c', text: '全部停用', badge: `${devices.length}` }
   }
@@ -415,6 +421,7 @@ const getStationStatusMeta = (devices) => {
 
 const buildStatusMarkerHtml = (station, devices) => {
   const meta = getStationStatusMeta(devices)
+
   return `
     <div style="position:relative;transform:translate(-24px,-58px);">
       <div style="
@@ -478,7 +485,7 @@ const buildStationPopupHtml = (station, deviceList) => {
 
   return `
     <div style="width:300px;padding:2px 2px 6px 2px;">
-      <div style="font-size:16px;font-weight:700;color:#303133;">${station.stationName}</div>
+      <div style="font-size:16px;font-weight:700;color:#303133;">${station.stationName || '-'}</div>
       <div style="margin-top:8px;color:#606266;">站点编码：${station.stationCode || '-'}</div>
       <div style="margin-top:4px;color:#606266;">位置：${station.locationText || '-'}</div>
       <div style="margin-top:4px;color:#606266;">设备总数：${total}</div>
@@ -561,13 +568,10 @@ const createDivIcon = (html, width = 48, height = 58, anchorX = 24, anchorY = 58
 
 const initDeviceStatusMap = () => {
   if (deviceStatusMap) return
-
   deviceStatusMap = L.map(deviceMapRef.value).setView([22.55, 114.0], 10)
-
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap'
   }).addTo(deviceStatusMap)
-
   deviceStatusLayer = L.layerGroup().addTo(deviceStatusMap)
 }
 
@@ -600,7 +604,7 @@ const renderDeviceStatusMap = async () => {
   }
 
   setTimeout(() => {
-    deviceStatusMap.invalidateSize()
+    deviceStatusMap?.invalidateSize()
   }, 200)
 }
 
@@ -608,7 +612,6 @@ const initStationSelectMap = () => {
   if (stationSelectMap) return
 
   stationSelectMap = L.map(stationMapRef.value).setView([22.55, 114.0], 10)
-
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap'
   }).addTo(stationSelectMap)
@@ -624,6 +627,10 @@ const initStationSelectMap = () => {
     stationForm.latitude = Number(lat).toFixed(6)
     stationForm.locationText = `${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)}`
     stationDialogVisible.value = true
+
+    setTimeout(() => {
+      stationFormRef.value?.clearValidate?.()
+    }, 0)
 
     if (pendingCreateMarker) {
       pendingCreateMarker.remove()
@@ -681,7 +688,7 @@ const renderStationSelectMap = async () => {
   }
 
   setTimeout(() => {
-    stationSelectMap.invalidateSize()
+    stationSelectMap?.invalidateSize()
   }, 200)
 }
 
@@ -705,25 +712,21 @@ const loadPage = async () => {
       runStatus: queryForm.runStatus === '' ? undefined : queryForm.runStatus,
       keyword: queryForm.keyword || undefined
     })
-
     const data = res.data || {}
     pageState.total = data.total || 0
     pageState.records = data.records || []
+  } catch (error) {
+    console.error(error)
+    ElMessage.error(error?.message || '设备列表加载失败')
   } finally {
     loading.value = false
   }
 }
 
 const refreshAllData = async () => {
-  await loadStationOptions()
-  await loadDeviceMapData()
-  await loadPage()
+  await Promise.all([loadStationOptions(), loadDeviceMapData(), loadPage()])
   await nextTick()
   await renderDeviceStatusMap()
-
-  if (mapDialogVisible.value) {
-    await renderStationSelectMap()
-  }
 }
 
 const setQuickStatus = async (status) => {
@@ -768,41 +771,107 @@ const resetForm = () => {
   form.remark = ''
 }
 
-const openCreateDialog = () => {
+const clearDeviceValidate = async () => {
+  await nextTick()
+  formRef.value?.clearValidate?.()
+}
+
+const clearStationValidate = async () => {
+  await nextTick()
+  stationFormRef.value?.clearValidate?.()
+}
+
+const openCreateDialog = async () => {
   dialogMode.value = 'create'
   resetForm()
   dialogVisible.value = true
+  await clearDeviceValidate()
 }
 
-const openEditDialog = (row) => {
+const openEditDialog = async (row) => {
   dialogMode.value = 'edit'
   form.id = row.id
-  form.deviceCode = row.deviceCode
-  form.deviceName = row.deviceName
-  form.stationId = row.stationId
-  form.deviceType = row.deviceType
-  form.ipAddr = row.ipAddr
-  form.runStatus = row.runStatus
-  form.remark = row.remark
+  form.deviceCode = row.deviceCode || ''
+  form.deviceName = row.deviceName || ''
+  form.stationId = row.stationId || ''
+  form.deviceType = row.deviceType || 'SPECTRUM_SENSOR'
+  form.ipAddr = row.ipAddr || ''
+  form.runStatus = row.runStatus ?? 1
+  form.remark = row.remark || ''
   dialogVisible.value = true
+  await clearDeviceValidate()
+}
+
+const handleDeviceDialogClose = () => {
+  dialogVisible.value = false
+  formRef.value?.clearValidate?.()
+}
+
+const validateDeviceForm = async () => {
+  if (!formRef.value) return false
+  try {
+    await formRef.value.validate()
+    return true
+  } catch (error) {
+    return false
+  }
+}
+
+const validateStationForm = async () => {
+  if (!stationFormRef.value) return false
+  try {
+    await stationFormRef.value.validate()
+    return true
+  } catch (error) {
+    return false
+  }
 }
 
 const handleSubmit = async () => {
-  await formRef.value.validate()
+  const valid = await validateDeviceForm()
+  if (!valid) {
+    ElMessage.warning('请先把设备表单填写完整')
+    return
+  }
+
+  if (!form.deviceCode?.trim()) {
+    ElMessage.warning('请输入设备编码')
+    return
+  }
+
+  if (!form.deviceName?.trim()) {
+    ElMessage.warning('请输入设备名称')
+    return
+  }
+
+  if (!form.stationId) {
+    ElMessage.warning('请选择所属站点')
+    return
+  }
+
+  if (!form.deviceType) {
+    ElMessage.warning('请选择设备类型')
+    return
+  }
+
+  if (!form.ipAddr?.trim()) {
+    ElMessage.warning('请输入IP地址')
+    return
+  }
+
+  const payload = {
+    id: form.id,
+    deviceCode: form.deviceCode.trim(),
+    deviceName: form.deviceName.trim(),
+    stationId: form.stationId,
+    deviceType: form.deviceType,
+    ipAddr: form.ipAddr.trim(),
+    runStatus: form.runStatus,
+    remark: form.remark
+  }
 
   try {
     submitLoading.value = true
-
-    const payload = {
-      id: form.id,
-      deviceCode: form.deviceCode,
-      deviceName: form.deviceName,
-      stationId: form.stationId,
-      deviceType: form.deviceType,
-      ipAddr: form.ipAddr,
-      runStatus: form.runStatus,
-      remark: form.remark
-    }
 
     if (dialogMode.value === 'create') {
       await createDeviceApi(payload)
@@ -813,31 +882,39 @@ const handleSubmit = async () => {
     }
 
     dialogVisible.value = false
+    formRef.value?.clearValidate?.()
     await refreshAllData()
+  } catch (error) {
+    console.error(error)
+    ElMessage.error(error?.message || '设备保存失败')
   } finally {
     submitLoading.value = false
   }
 }
 
 const handleDelete = async (row) => {
-  await ElMessageBox.confirm(`确认删除设备【${row.deviceName}】吗？`, '删除确认', {
-    type: 'warning'
-  })
+  try {
+    await ElMessageBox.confirm(`确认删除设备【${row.deviceName}】吗？`, '删除确认', {
+      type: 'warning'
+    })
 
-  await deleteDeviceApi(row.id)
-  ElMessage.success('设备删除成功')
+    await deleteDeviceApi(row.id)
+    ElMessage.success('设备删除成功')
 
-  if (pageState.records.length === 1 && queryForm.current > 1) {
-    queryForm.current -= 1
+    if (pageState.records.length === 1 && queryForm.current > 1) {
+      queryForm.current -= 1
+    }
+
+    await refreshAllData()
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') return
+    console.error(error)
+    ElMessage.error(error?.message || '设备删除失败')
   }
-
-  await refreshAllData()
 }
 
-const openMapDialog = async () => {
+const openMapDialog = () => {
   mapDialogVisible.value = true
-  await nextTick()
-  await renderStationSelectMap()
 }
 
 const handleMapDialogOpened = async () => {
@@ -845,41 +922,101 @@ const handleMapDialogOpened = async () => {
   await renderStationSelectMap()
 }
 
+const resetStationForm = () => {
+  stationForm.stationCode = ''
+  stationForm.stationName = ''
+  stationForm.longitude = ''
+  stationForm.latitude = ''
+  stationForm.locationText = ''
+}
+
+const handleStationDialogClose = () => {
+  stationDialogVisible.value = false
+  stationFormRef.value?.clearValidate?.()
+}
+
 const handleCreateStation = async () => {
-  await stationFormRef.value.validate()
+  const valid = await validateStationForm()
+  if (!valid) {
+    ElMessage.warning('请先把站点表单填写完整')
+    return
+  }
+
+  if (!stationForm.stationCode?.trim()) {
+    ElMessage.warning('请输入站点编码')
+    return
+  }
+
+  if (!stationForm.stationName?.trim()) {
+    ElMessage.warning('请输入站点名称')
+    return
+  }
+
+  if (!stationForm.longitude?.trim()) {
+    ElMessage.warning('请输入经度')
+    return
+  }
+
+  if (!stationForm.latitude?.trim()) {
+    ElMessage.warning('请输入纬度')
+    return
+  }
+
+  if (!stationForm.locationText?.trim()) {
+    ElMessage.warning('请输入位置描述')
+    return
+  }
+
+  const payload = {
+    stationCode: stationForm.stationCode.trim(),
+    stationName: stationForm.stationName.trim(),
+    longitude: stationForm.longitude.trim(),
+    latitude: stationForm.latitude.trim(),
+    locationText: stationForm.locationText.trim()
+  }
 
   try {
     stationSubmitLoading.value = true
+    await createStationApi(payload)
+    ElMessage.success('站点新增成功')
 
-    const res = await createStationApi({
-      stationCode: stationForm.stationCode,
-      stationName: stationForm.stationName,
-      longitude: stationForm.longitude,
-      latitude: stationForm.latitude,
-      locationText: stationForm.locationText
-    })
-
-    const stationId = res.data
-    form.stationId = stationId
-    ElMessage.success('新站点创建成功，已自动选中')
-
+    const targetCode = stationForm.stationCode
     stationDialogVisible.value = false
-    mapDialogVisible.value = false
+    stationFormRef.value?.clearValidate?.()
+    resetStationForm()
 
     if (pendingCreateMarker) {
       pendingCreateMarker.remove()
       pendingCreateMarker = null
     }
 
-    await refreshAllData()
+    await loadStationOptions()
+    await loadDeviceMapData()
+
+    const created = stationOptions.value.find(item => item.stationCode === targetCode)
+    if (created) {
+      form.stationId = created.id
+    }
+
+    await nextTick()
+    await renderStationSelectMap()
+    await renderDeviceStatusMap()
+
+    if (created) {
+      ElMessage.success(`已自动选中新站点：${created.stationName}`)
+      mapDialogVisible.value = false
+    }
+  } catch (error) {
+    console.error(error)
+    ElMessage.error(error?.message || '站点新增失败')
   } finally {
     stationSubmitLoading.value = false
   }
 }
 
 const handleResize = () => {
-  if (deviceStatusMap) deviceStatusMap.invalidateSize()
-  if (stationSelectMap) stationSelectMap.invalidateSize()
+  deviceStatusMap?.invalidateSize()
+  stationSelectMap?.invalidateSize()
 }
 
 onMounted(async () => {
@@ -944,14 +1081,24 @@ onUnmounted(() => {
 .metric-blue::before {
   background: linear-gradient(90deg, #3b82f6, #60a5fa);
 }
+
 .metric-cyan::before {
   background: linear-gradient(90deg, #06b6d4, #67e8f9);
 }
+
 .metric-green::before {
   background: linear-gradient(90deg, #22c55e, #86efac);
 }
+
 .metric-red::before {
   background: linear-gradient(90deg, #ef4444, #fca5a5);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .header-title {
@@ -991,7 +1138,7 @@ onUnmounted(() => {
 .legend-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   flex-wrap: wrap;
 }
 
@@ -1031,10 +1178,18 @@ onUnmounted(() => {
   line-height: 1.8;
 }
 
+.map-box {
+  width: 100%;
+  height: 420px;
+  border-radius: 18px;
+  overflow: hidden;
+  background: #f8fbff;
+}
+
 .station-picker-row {
   display: flex;
-  gap: 10px;
   width: 100%;
+  gap: 10px;
 }
 
 .dialog-section-title {
@@ -1046,7 +1201,9 @@ onUnmounted(() => {
   color: #1f2a37;
 }
 
-.beauty-table {
-  margin-top: 4px;
+.pagination-wrap {
+  margin-top: 18px;
+  display: flex;
+  justify-content: flex-end;
 }
 </style>

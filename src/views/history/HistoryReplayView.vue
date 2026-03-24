@@ -39,7 +39,7 @@
         <div class="card-header">
           <div>
             <div class="header-title">历史查询</div>
-            <div class="header-subtitle">表格分页用于浏览，回放轴会自动加载当前筛选条件下的全部历史帧</div>
+            <div class="header-subtitle">分页表格用于浏览，回放轴自动加载当前筛选条件下的全部历史帧</div>
           </div>
           <div class="header-actions">
             <el-button @click="refreshAllData">刷新数据</el-button>
@@ -114,7 +114,7 @@
             <div class="card-header">
               <div>
                 <div class="header-title">历史记录列表</div>
-                <div class="header-subtitle">分页表格仅用于浏览；点击任意记录可定位到对应回放帧</div>
+                <div class="header-subtitle">点击任意记录可定位到对应回放帧</div>
               </div>
               <el-tag type="info">共 {{ pageState.total }} 条</el-tag>
             </div>
@@ -271,7 +271,6 @@ import * as echarts from 'echarts'
 import { getHistoryPageApi, getStationListApi } from '../../api/overview'
 
 const loading = ref(false)
-const replayLoading = ref(false)
 const stationOptions = ref([])
 const selectedHistory = ref(null)
 const chartRef = ref(null)
@@ -599,7 +598,6 @@ const loadStationOptions = async () => {
 const loadPage = async () => {
   try {
     loading.value = true
-
     const res = await getHistoryPageApi(buildHistoryParams(queryForm.current, queryForm.size))
     const data = res.data || {}
 
@@ -607,7 +605,7 @@ const loadPage = async () => {
     pageState.records = data.records || []
   } catch (error) {
     console.error(error)
-    ElMessage.error('历史列表加载失败')
+    ElMessage.error(error?.message || '历史列表加载失败')
   } finally {
     loading.value = false
   }
@@ -617,8 +615,6 @@ const loadReplayTimeline = async () => {
   stopReplay()
 
   try {
-    replayLoading.value = true
-
     const pageSize = 200
     let current = 1
     let total = 0
@@ -636,10 +632,7 @@ const loadReplayTimeline = async () => {
       if (allRecords.length >= total) break
 
       current += 1
-
-      if (current > 100) {
-        break
-      }
+      if (current > 100) break
     }
 
     replayRecords.value = sortFramesByTime(allRecords)
@@ -657,9 +650,7 @@ const loadReplayTimeline = async () => {
     }
   } catch (error) {
     console.error(error)
-    ElMessage.error('历史回放帧加载失败')
-  } finally {
-    replayLoading.value = false
+    ElMessage.error(error?.message || '历史回放帧加载失败')
   }
 }
 
@@ -704,11 +695,8 @@ const handleCurrentChange = async (page) => {
   await loadPage()
 }
 
-
 const handleResize = () => {
-  if (chartInstance) {
-    chartInstance.resize()
-  }
+  chartInstance?.resize()
 }
 
 onMounted(async () => {
@@ -774,14 +762,24 @@ onUnmounted(() => {
 .metric-blue::before {
   background: linear-gradient(90deg, #3b82f6, #60a5fa);
 }
+
 .metric-red::before {
   background: linear-gradient(90deg, #ef4444, #fca5a5);
 }
+
 .metric-cyan::before {
   background: linear-gradient(90deg, #06b6d4, #67e8f9);
 }
+
 .metric-green::before {
   background: linear-gradient(90deg, #22c55e, #86efac);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .header-title {
@@ -802,59 +800,45 @@ onUnmounted(() => {
   gap: 10px;
 }
 
-.equal-height-card {
-  width: 100%;
+.equal-height-card,
+.history-list-card {
   height: 100%;
+}
+
+.equal-height-card :deep(.el-card__body),
+.history-list-card :deep(.el-card__body) {
+  height: calc(100% - 56px);
+  display: flex;
+  flex-direction: column;
 }
 
 .history-list-content {
   display: flex;
   flex-direction: column;
+  height: 100%;
 }
 
 .history-table-wrap {
-  min-height: 0;
+  flex: 1;
+  overflow: hidden;
 }
 
 .history-table {
-  width: 100%;
-}
-
-.pagination-wrap {
-  margin-top: 16px;
-  display: flex;
-  justify-content: flex-end;
-}
-
-:deep(.history-list-card) {
-  display: flex;
-  flex-direction: column;
-}
-
-:deep(.history-list-card .el-card__body) {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-:deep(.history-table .el-table__inner-wrapper) {
-  height: auto;
+  height: 100%;
 }
 
 .replay-toolbar {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
-  margin-bottom: 14px;
   flex-wrap: wrap;
 }
 
 .toolbar-right {
   display: flex;
   align-items: center;
-  gap: 14px;
-  flex-wrap: wrap;
+  gap: 16px;
 }
 
 .speed-box {
@@ -865,29 +849,30 @@ onUnmounted(() => {
 
 .speed-label {
   font-size: 13px;
-  color: #7b8aa0;
+  color: #6b7280;
 }
 
 .frame-progress {
-  margin-bottom: 10px;
+  margin-top: 16px;
 }
 
 .frame-label {
-  margin-bottom: 6px;
+  margin-bottom: 8px;
+  color: #6b7280;
   font-size: 13px;
-  color: #7b8aa0;
 }
 
 .replay-chart {
-  height: 420px;
+  margin-top: 16px;
+  height: 360px;
 }
 
 .selected-summary {
   margin-top: 16px;
   padding: 14px 16px;
   border-radius: 16px;
-  background: linear-gradient(135deg, #f8fbff 0%, #f2f6ff 100%);
-  border: 1px solid #e8eef8;
+  background: linear-gradient(135deg, #eff6ff, #f8fbff);
+  border: 1px solid #dbeafe;
 }
 
 .selected-summary-title {
@@ -897,8 +882,14 @@ onUnmounted(() => {
 }
 
 .selected-summary-sub {
-  margin-top: 6px;
+  margin-top: 8px;
   font-size: 13px;
-  color: #8a97ab;
+  color: #64748b;
+}
+
+.pagination-wrap {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
 }
 </style>

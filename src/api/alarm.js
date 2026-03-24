@@ -1,10 +1,8 @@
-import request from '@/utils/request'
+import request from '../utils/request'
 
 /**
- * PC 端告警分页列表
- * 注意：
- * request.js 中已经配置了 baseURL = '/api'
- * 所以这里不能再写 '/api/core/...'
+ * 告警分页列表
+ * 统一路径：/api/core/alarms/page
  */
 export function getAlarmPageApi(params) {
   return request({
@@ -16,9 +14,7 @@ export function getAlarmPageApi(params) {
 
 /**
  * 告警地图分页
- * 当前 AlarmMapView.vue 改为从 alarm.js 统一获取地图分页接口时，
- * 这里必须导出 getAlarmMapPageApi，否则会出现：
- * does not provide an export named 'getAlarmMapPageApi'
+ * 统一路径：/api/core/overview/alarm-map/page
  */
 export function getAlarmMapPageApi(params) {
   return request({
@@ -30,10 +26,11 @@ export function getAlarmMapPageApi(params) {
 
 /**
  * 告警确认
+ * 统一路径：/api/core/alarms/confirm
  */
 export function confirmAlarmApi(data) {
   return request({
-    url: '/core/alarm/confirm',
+    url: '/core/alarms/confirm',
     method: 'post',
     data
   })
@@ -41,10 +38,11 @@ export function confirmAlarmApi(data) {
 
 /**
  * 告警处理
+ * 统一路径：/api/core/alarms/handle
  */
 export function handleAlarmApi(data) {
   return request({
-    url: '/core/alarm/handle',
+    url: '/core/alarms/handle',
     method: 'post',
     data
   })

@@ -2,7 +2,6 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 import LoginView from '../views/login/LoginView.vue'
 import LayoutView from '../views/layout/LayoutView.vue'
 import OverviewView from '../views/overview/OverviewView.vue'
-import PlaceholderView from '../views/placeholder/PlaceholderView.vue'
 import DeviceManageView from '../views/device/DeviceManageView.vue'
 import AlarmListView from '../views/alarm/AlarmListView.vue'
 import AlarmMapView from '../views/alarm/AlarmMapView.vue'
@@ -83,6 +82,10 @@ const routes = [
         }
       },
       {
+        path: 'device/list',
+        redirect: '/device/manage'
+      },
+      {
         path: 'task/schedule',
         name: 'TaskSchedule',
         component: TaskScheduleView,
@@ -92,11 +95,15 @@ const routes = [
         }
       },
       {
+        path: 'task/list',
+        redirect: '/task/schedule'
+      },
+      {
         path: 'system/settings',
         name: 'SystemSettings',
         component: SystemSettingsView,
         meta: {
-          title: '全局设置',
+          title: '告警阈值设置',
           requiresAuth: true
         }
       }
@@ -111,15 +118,11 @@ const router = createRouter({
 
 router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('radio_token')
+
   document.title = `${to.meta?.title || '无线电频谱智能监测系统'} - 无线电频谱智能监测系统`
 
   if (to.meta?.requiresAuth && !token) {
     next('/login')
-    return
-  }
-
-  if (to.path === '/login' && token) {
-    next('/overview')
     return
   }
 

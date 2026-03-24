@@ -21,7 +21,7 @@
         <el-card class="metric-card metric-green" shadow="hover">
           <div class="metric-label">运行中任务</div>
           <div class="metric-number">{{ runningCount }}</div>
-          <div class="metric-desc">当前页内正在运行的任务</div>
+          <div class="metric-desc">运行中任务会被后端定时执行</div>
         </el-card>
       </el-col>
 
@@ -29,7 +29,7 @@
         <el-card class="metric-card metric-orange" shadow="hover">
           <div class="metric-label">未启动任务</div>
           <div class="metric-number">{{ pendingCount }}</div>
-          <div class="metric-desc">当前页内待执行任务</div>
+          <div class="metric-desc">未启动任务仅保存，不会自动执行</div>
         </el-card>
       </el-col>
     </el-row>
@@ -39,7 +39,7 @@
         <div class="card-header">
           <div>
             <div class="header-title">任务查询</div>
-            <div class="header-subtitle">按站点、状态、名称快速定位监测任务</div>
+            <div class="header-subtitle">支持任务新增、启动、停止、日志查看</div>
           </div>
           <div class="header-actions">
             <el-button type="primary" @click="openCreateDialog">新增任务</el-button>
@@ -92,7 +92,7 @@
         <div class="card-header">
           <div>
             <div class="header-title">任务列表</div>
-            <div class="header-subtitle">支持任务新增、修改、删除与分页浏览</div>
+            <div class="header-subtitle">运行中任务会被调度器自动扫描执行</div>
           </div>
           <el-tag type="info">共 {{ pageState.total }} 条</el-tag>
         </div>
@@ -129,8 +129,27 @@
             {{ formatTime(scope.row.updateTime) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="190" fixed="right">
+        <el-table-column label="操作" width="320" fixed="right">
           <template #default="scope">
+            <el-button
+              v-if="scope.row.taskStatus !== 1"
+              link
+              type="success"
+              @click="handleStartTask(scope.row)"
+            >
+              启动
+            </el-button>
+
+            <el-button
+              v-if="scope.row.taskStatus === 1"
+              link
+              type="warning"
+              @click="handleStopTask(scope.row)"
+            >
+              停止
+            </el-button>
+
+            <el-button link type="primary" @click="openLogDrawer(scope.row)">执行日志</el-button>
             <el-button link type="primary" @click="openEditDialog(scope.row)">修改</el-button>
             <el-button link type="danger" @click="handleDelete(scope.row)">删除</el-button>
           </template>
@@ -242,21 +261,92 @@
       </el-form>
 
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button @click="handleDialogClose">取消</el-button>
         <el-button type="primary" :loading="submitLoading" @click="handleSubmit">保存</el-button>
       </template>
     </el-dialog>
+
+    <el-drawer v-model="logDrawerVisible" size="860px" :title="`任务执行日志 - ${logTask.taskName || ''}`">
+      <div class="log-top-summary" v-if="latestLog">
+        <el-row :gutter="16">
+          <el-col :span="8">
+            <div class="summary-box">
+              <div class="summary-label">最近结果</div>
+              <div class="summary-value">
+                <el-tag :type="logStatusTag(latestLog.execStatus)">
+                  {{ logStatusText(latestLog.execStatus) }}
+                </el-tag>
+              </div>
+            </div>
+          </el-col>
+
+          <el-col :span="8">
+            <div class="summary-box">
+              <div class="summary-label">最近执行时间</div>
+              <div class="summary-text">{{ formatTime(latestLog.executeTime) }}</div>
+            </div>
+          </el-col>
+
+          <el-col :span="8">
+            <div class="summary-box">
+              <div class="summary-label">最近执行耗时</div>
+              <div class="summary-text">{{ latestLog.durationMs || 0 }} ms</div>
+            </div>
+          </el-col>
+        </el-row>
+
+        <div class="latest-message">
+          <span class="latest-message-label">最近结果说明：</span>
+          <span>{{ latestLog.execMessage || '-' }}</span>
+        </div>
+      </div>
+
+      <el-table :data="logPage.records" stripe border v-loading="logLoading" empty-text="暂无执行日志">
+        <el-table-column type="index" label="序号" width="70" />
+        <el-table-column prop="execStatus" label="结果状态" width="120">
+          <template #default="scope">
+            <el-tag :type="logStatusTag(scope.row.execStatus)">
+              {{ logStatusText(scope.row.execStatus) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="triggerType" label="触发方式" width="120" />
+        <el-table-column prop="execMessage" label="结果说明" min-width="260" show-overflow-tooltip />
+        <el-table-column prop="snapshotId" label="快照ID" width="110" />
+        <el-table-column prop="alarmId" label="告警ID" width="110" />
+        <el-table-column prop="durationMs" label="耗时(ms)" width="110" />
+        <el-table-column prop="executeTime" label="执行时间" min-width="180">
+          <template #default="scope">
+            {{ formatTime(scope.row.executeTime) }}
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <div class="pagination-wrap">
+        <el-pagination
+          background
+          layout="total, prev, pager, next"
+          :total="logPage.total"
+          :current-page="logQuery.current"
+          :page-size="logQuery.size"
+          @current-change="handleLogCurrentChange"
+        />
+      </div>
+    </el-drawer>
   </div>
 </template>
 
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getDeviceListApi, getStationListApi } from '../../api/overview'
 import {
   createTaskApi,
   deleteTaskApi,
+  getTaskLogPageApi,
   getTaskPageApi,
+  startTaskApi,
+  stopTaskApi,
   updateTaskApi
 } from '../../api/manage'
 
@@ -266,8 +356,12 @@ const dialogVisible = ref(false)
 const dialogMode = ref('create')
 const formRef = ref(null)
 
+const logDrawerVisible = ref(false)
+const logLoading = ref(false)
+
 const stationOptions = ref([])
 const deviceOptions = ref([])
+
 const pageState = reactive({
   total: 0,
   records: []
@@ -290,8 +384,23 @@ const form = reactive({
   freqEndMhz: 108.0,
   sampleRateKhz: 200.0,
   algorithmMode: 'RULE',
-  taskStatus: 1,
+  taskStatus: 0,
   cronExpr: '0/5 * * * * ?'
+})
+
+const logTask = reactive({
+  id: null,
+  taskName: ''
+})
+
+const logQuery = reactive({
+  current: 1,
+  size: 10
+})
+
+const logPage = reactive({
+  total: 0,
+  records: []
 })
 
 const rules = {
@@ -314,6 +423,10 @@ const filteredDeviceOptions = computed(() => {
 const runningCount = computed(() => pageState.records.filter(item => item.taskStatus === 1).length)
 const pendingCount = computed(() => pageState.records.filter(item => item.taskStatus === 0).length)
 
+const latestLog = computed(() => {
+  return logPage.records.length > 0 ? logPage.records[0] : null
+})
+
 const formatTime = (value) => {
   if (!value) return '-'
   return String(value).replace('T', ' ')
@@ -333,6 +446,24 @@ const taskStatusTag = (status) => {
     0: 'info',
     1: 'success',
     2: 'danger'
+  }
+  return map[status] || 'info'
+}
+
+const logStatusText = (status) => {
+  const map = {
+    1: '成功',
+    2: '失败',
+    3: '已停止'
+  }
+  return map[status] || '未知'
+}
+
+const logStatusTag = (status) => {
+  const map = {
+    1: 'success',
+    2: 'danger',
+    3: 'warning'
   }
   return map[status] || 'info'
 }
@@ -361,8 +492,33 @@ const loadPage = async () => {
     const data = res.data || {}
     pageState.total = data.total || 0
     pageState.records = data.records || []
+  } catch (error) {
+    console.error(error)
+    ElMessage.error(error?.message || '任务列表加载失败')
   } finally {
     loading.value = false
+  }
+}
+
+const loadTaskLogPage = async () => {
+  if (!logTask.id) return
+
+  try {
+    logLoading.value = true
+    const res = await getTaskLogPageApi({
+      taskId: logTask.id,
+      current: logQuery.current,
+      size: logQuery.size
+    })
+
+    const data = res.data || {}
+    logPage.total = data.total || 0
+    logPage.records = data.records || []
+  } catch (error) {
+    console.error(error)
+    ElMessage.error(error?.message || '任务日志加载失败')
+  } finally {
+    logLoading.value = false
   }
 }
 
@@ -406,29 +562,41 @@ const resetForm = () => {
   form.freqEndMhz = 108.0
   form.sampleRateKhz = 200.0
   form.algorithmMode = 'RULE'
-  form.taskStatus = 1
+  form.taskStatus = 0
   form.cronExpr = '0/5 * * * * ?'
 }
 
-const openCreateDialog = () => {
+const clearFormValidate = async () => {
+  await nextTick()
+  formRef.value?.clearValidate?.()
+}
+
+const openCreateDialog = async () => {
   dialogMode.value = 'create'
   resetForm()
   dialogVisible.value = true
+  await clearFormValidate()
 }
 
-const openEditDialog = (row) => {
+const openEditDialog = async (row) => {
   dialogMode.value = 'edit'
   form.id = row.id
-  form.taskName = row.taskName
-  form.stationId = row.stationId
-  form.deviceId = row.deviceId
-  form.freqStartMhz = Number(row.freqStartMhz)
-  form.freqEndMhz = Number(row.freqEndMhz)
-  form.sampleRateKhz = Number(row.sampleRateKhz)
-  form.algorithmMode = row.algorithmMode
-  form.taskStatus = row.taskStatus
-  form.cronExpr = row.cronExpr
+  form.taskName = row.taskName || ''
+  form.stationId = row.stationId || ''
+  form.deviceId = row.deviceId || ''
+  form.freqStartMhz = Number(row.freqStartMhz || 87.0)
+  form.freqEndMhz = Number(row.freqEndMhz || 108.0)
+  form.sampleRateKhz = Number(row.sampleRateKhz || 200.0)
+  form.algorithmMode = row.algorithmMode || 'RULE'
+  form.taskStatus = row.taskStatus ?? 0
+  form.cronExpr = row.cronExpr || '0/5 * * * * ?'
   dialogVisible.value = true
+  await clearFormValidate()
+}
+
+const handleDialogClose = () => {
+  dialogVisible.value = false
+  formRef.value?.clearValidate?.()
 }
 
 const handleFormStationChange = () => {
@@ -437,12 +605,46 @@ const handleFormStationChange = () => {
   }
 }
 
+const validateTaskForm = async () => {
+  if (!formRef.value) return false
+  try {
+    await formRef.value.validate()
+    return true
+  } catch (error) {
+    return false
+  }
+}
+
 const handleSubmit = async () => {
-  await formRef.value.validate()
+  const valid = await validateTaskForm()
+  if (!valid) {
+    ElMessage.warning('请先把任务表单填写完整')
+    return
+  }
+
+  if (!form.taskName?.trim()) {
+    ElMessage.warning('请输入任务名称')
+    return
+  }
+
+  if (!form.stationId) {
+    ElMessage.warning('请选择所属站点')
+    return
+  }
+
+  if (!form.deviceId) {
+    ElMessage.warning('请选择所属设备')
+    return
+  }
+
+  if (!form.cronExpr?.trim()) {
+    ElMessage.warning('请输入调度表达式')
+    return
+  }
 
   const payload = {
     id: form.id,
-    taskName: form.taskName,
+    taskName: form.taskName.trim(),
     stationId: form.stationId,
     deviceId: form.deviceId,
     freqStartMhz: form.freqStartMhz,
@@ -450,7 +652,7 @@ const handleSubmit = async () => {
     sampleRateKhz: form.sampleRateKhz,
     algorithmMode: form.algorithmMode,
     taskStatus: form.taskStatus,
-    cronExpr: form.cronExpr
+    cronExpr: form.cronExpr.trim()
   }
 
   try {
@@ -465,27 +667,99 @@ const handleSubmit = async () => {
     }
 
     dialogVisible.value = false
+    formRef.value?.clearValidate?.()
     await loadPage()
+  } catch (error) {
+    console.error(error)
+    ElMessage.error(error?.message || '任务保存失败')
   } finally {
     submitLoading.value = false
   }
 }
 
 const handleDelete = async (row) => {
-  await ElMessageBox.confirm(`确认删除任务【${row.taskName}】吗？`, '删除确认', {
-    type: 'warning'
-  })
+  try {
+    await ElMessageBox.confirm(`确认删除任务【${row.taskName}】吗？`, '删除确认', {
+      type: 'warning'
+    })
 
-  await deleteTaskApi(row.id)
-  ElMessage.success('任务删除成功')
+    await deleteTaskApi(row.id)
+    ElMessage.success('任务删除成功')
 
-  if (pageState.records.length === 1 && queryForm.current > 1) {
-    queryForm.current -= 1
+    if (pageState.records.length === 1 && queryForm.current > 1) {
+      queryForm.current -= 1
+    }
+    await loadPage()
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') return
+    console.error(error)
+    ElMessage.error(error?.message || '任务删除失败')
   }
-  await loadPage()
 }
 
-Promise.all([loadStations(), loadDevices()]).then(loadPage)
+const handleStartTask = async (row) => {
+  try {
+    await ElMessageBox.confirm(
+      `确认启动任务【${row.taskName}】吗？启动后将按调度表达式自动执行。`,
+      '启动任务',
+      { type: 'success' }
+    )
+
+    await startTaskApi(row.id)
+    ElMessage.success('任务已启动')
+    await loadPage()
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') return
+    console.error(error)
+    ElMessage.error(error?.message || '启动任务失败')
+  }
+}
+
+const handleStopTask = async (row) => {
+  try {
+    await ElMessageBox.confirm(
+      `确认停止任务【${row.taskName}】吗？停止后将不再自动执行。`,
+      '停止任务',
+      { type: 'warning' }
+    )
+
+    await stopTaskApi(row.id)
+    ElMessage.success('任务已停止')
+    await loadPage()
+
+    if (logDrawerVisible.value && logTask.id === row.id) {
+      logQuery.current = 1
+      await loadTaskLogPage()
+    }
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') return
+    console.error(error)
+    ElMessage.error(error?.message || '停止任务失败')
+  }
+}
+
+const openLogDrawer = async (row) => {
+  logTask.id = row.id
+  logTask.taskName = row.taskName || ''
+  logQuery.current = 1
+  logDrawerVisible.value = true
+  await loadTaskLogPage()
+}
+
+const handleLogCurrentChange = async (page) => {
+  logQuery.current = page
+  await loadTaskLogPage()
+}
+
+onMounted(async () => {
+  try {
+    await Promise.all([loadStations(), loadDevices()])
+    await loadPage()
+  } catch (error) {
+    console.error(error)
+    ElMessage.error(error?.message || '任务页面初始化失败')
+  }
+})
 </script>
 
 <style scoped>
@@ -590,5 +864,46 @@ Promise.all([loadStations(), loadDevices()]).then(loadPage)
 
 .beauty-table {
   margin-top: 4px;
+}
+
+.log-top-summary {
+  margin-bottom: 18px;
+}
+
+.summary-box {
+  border-radius: 16px;
+  padding: 16px;
+  background: linear-gradient(135deg, #f8fbff, #eff6ff);
+  border: 1px solid #dbeafe;
+}
+
+.summary-label {
+  font-size: 13px;
+  color: #8a97ab;
+}
+
+.summary-value {
+  margin-top: 12px;
+}
+
+.summary-text {
+  margin-top: 12px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #1f2a37;
+}
+
+.latest-message {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: #f8fafc;
+  color: #475569;
+  line-height: 1.8;
+}
+
+.latest-message-label {
+  font-weight: 700;
+  color: #1f2a37;
 }
 </style>

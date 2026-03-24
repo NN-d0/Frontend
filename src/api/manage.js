@@ -69,3 +69,25 @@ export function deleteTaskApi(id) {
     method: 'delete'
   })
 }
+
+export function startTaskApi(id) {
+  return request({
+    url: `/core/task-dispatch/start/${id}`,
+    method: 'post'
+  })
+}
+
+export function stopTaskApi(id) {
+  return request({
+    url: `/core/task-dispatch/stop/${id}`,
+    method: 'post'
+  })
+}
+
+export function getTaskLogPageApi(params) {
+  return request({
+    url: '/core/task-dispatch/logs/page',
+    method: 'get',
+    params
+  })
+}

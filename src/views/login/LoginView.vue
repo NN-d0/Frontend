@@ -128,13 +128,16 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Lock, User } from '@element-plus/icons-vue'
-import { loginApi } from '../../api/user'
+import { loginApi } from '../../api/auth'
 
 const router = useRouter()
 const formRef = ref(null)
 const loading = ref(false)
 const rememberMe = ref(true)
 const schoolLogo = '/images/school-logo.png'
+
+const TOKEN_KEY = 'radio_token'
+const USER_KEY = 'radio_user'
 
 const form = reactive({
   username: '',
@@ -162,31 +165,69 @@ const extractToken = (res) => {
   )
 }
 
-const handleLogin = async () => {
-  if (!formRef.value) return
+const extractUserInfo = (res) => {
+  const data = res?.data ?? res
+  return data?.userInfo || data?.data?.userInfo || {}
+}
 
-  await formRef.value.validate()
+/**
+ * 先做表单校验。
+ * 注意：Element Plus validate 失败时会 reject 一个错误对象，
+ * 所以这里必须手动吃掉异常，避免控制台打印一大坨校验对象。
+ */
+const validateForm = async () => {
+  if (!formRef.value) return false
+
+  try {
+    await formRef.value.validate()
+    return true
+  } catch (error) {
+    return false
+  }
+}
+
+const handleLogin = async () => {
+  const valid = await validateForm()
+  if (!valid) {
+    ElMessage.warning('请输入用户名和密码')
+    return
+  }
+
+  if (!form.username?.trim()) {
+    ElMessage.warning('请输入用户名')
+    return
+  }
+
+  if (!form.password?.trim()) {
+    ElMessage.warning('请输入密码')
+    return
+  }
 
   try {
     loading.value = true
 
+    // 登录前清理旧状态，避免旧 token 干扰
+    localStorage.removeItem(TOKEN_KEY)
+    localStorage.removeItem(USER_KEY)
+
     const res = await loginApi({
-      username: form.username,
+      username: form.username.trim(),
       password: form.password
     })
 
     const token = extractToken(res)
+    const userInfo = extractUserInfo(res)
 
     if (!token) {
-      console.error('登录返回结果：', res)
       ElMessage.error('登录成功，但未获取到 token，请检查后端返回结构')
       return
     }
 
-    localStorage.setItem('radio_token', token)
+    localStorage.setItem(TOKEN_KEY, token)
+    localStorage.setItem(USER_KEY, JSON.stringify(userInfo || {}))
 
     if (rememberMe.value) {
-      localStorage.setItem('radio_login_username', form.username)
+      localStorage.setItem('radio_login_username', form.username.trim())
     } else {
       localStorage.removeItem('radio_login_username')
     }
