@@ -13,7 +13,7 @@
         <el-card class="metric-card metric-cyan" shadow="hover">
           <div class="metric-label">任务总数</div>
           <div class="metric-number">{{ pageState.total }}</div>
-          <div class="metric-desc">当前筛选条件下总任务数量</div>
+          <div class="metric-desc">当前筛选条件下的任务总量</div>
         </el-card>
       </el-col>
 
@@ -21,7 +21,7 @@
         <el-card class="metric-card metric-green" shadow="hover">
           <div class="metric-label">运行中任务</div>
           <div class="metric-number">{{ runningCount }}</div>
-          <div class="metric-desc">运行中任务会被后端定时执行</div>
+          <div class="metric-desc">运行中任务允许仿真器持续上报实时数据</div>
         </el-card>
       </el-col>
 
@@ -29,17 +29,30 @@
         <el-card class="metric-card metric-orange" shadow="hover">
           <div class="metric-label">未启动任务</div>
           <div class="metric-number">{{ pendingCount }}</div>
-          <div class="metric-desc">未启动任务仅保存，不会自动执行</div>
+          <div class="metric-desc">未启动任务仅保存配置，不参与实时链路</div>
         </el-card>
       </el-col>
     </el-row>
+
+    <el-card class="page-card status-meaning-card" shadow="never">
+      <div class="status-meaning-header">
+        <div class="status-meaning-title">状态口径说明</div>
+        <div class="status-meaning-subtitle">任务状态表示“业务调度是否开启”；设备/站点是否在线要以最近采集数据是否超时为准。</div>
+      </div>
+      <div class="status-meaning-grid">
+        <div v-for="item in taskStatusTips" :key="item.value" class="status-meaning-item">
+          <el-tag :type="item.tagType">{{ item.label }}</el-tag>
+          <div class="status-meaning-text">{{ item.meaning }}</div>
+        </div>
+      </div>
+    </el-card>
 
     <el-card class="page-card query-card" shadow="hover">
       <template #header>
         <div class="card-header">
           <div>
             <div class="header-title">任务查询</div>
-            <div class="header-subtitle">支持任务新增、启动、停止、日志查看</div>
+            <div class="header-subtitle">支持任务新增、启动、停止、日志查看；在线状态请在设备页查看</div>
           </div>
           <div class="header-actions">
             <el-button type="primary" @click="openCreateDialog">新增任务</el-button>
@@ -92,7 +105,7 @@
         <div class="card-header">
           <div>
             <div class="header-title">任务列表</div>
-            <div class="header-subtitle">运行中任务会被调度器自动扫描执行</div>
+            <div class="header-subtitle">运行中表示允许上报数据，不等同于设备当前在线</div>
           </div>
           <el-tag type="info">共 {{ pageState.total }} 条</el-tag>
         </div>
@@ -123,34 +136,32 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="cronExpr" label="调度表达式" min-width="180" />
+        <el-table-column prop="cronExpr" label="调度表达式" min-width="150" />
         <el-table-column prop="updateTime" label="更新时间" min-width="180">
           <template #default="scope">
             {{ formatTime(scope.row.updateTime) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="320" fixed="right">
+        <el-table-column label="操作" min-width="250" fixed="right">
           <template #default="scope">
+            <el-button link type="primary" @click="openEditDialog(scope.row)">修改</el-button>
             <el-button
               v-if="scope.row.taskStatus !== 1"
               link
               type="success"
-              @click="handleStartTask(scope.row)"
+              @click="handleStart(scope.row)"
             >
               启动
             </el-button>
-
             <el-button
               v-if="scope.row.taskStatus === 1"
               link
               type="warning"
-              @click="handleStopTask(scope.row)"
+              @click="handleStop(scope.row)"
             >
               停止
             </el-button>
-
-            <el-button link type="primary" @click="openLogDrawer(scope.row)">执行日志</el-button>
-            <el-button link type="primary" @click="openEditDialog(scope.row)">修改</el-button>
+            <el-button link type="info" @click="openLogDrawer(scope.row)">日志</el-button>
             <el-button link type="danger" @click="handleDelete(scope.row)">删除</el-button>
           </template>
         </el-table-column>
@@ -159,7 +170,7 @@
       <div class="pagination-wrap">
         <el-pagination
           background
-          layout="total, sizes, prev, pager, next, jumper"
+          layout="total, sizes, prev, pager, next"
           :total="pageState.total"
           :current-page="queryForm.current"
           :page-size="queryForm.size"
@@ -170,37 +181,23 @@
       </div>
     </el-card>
 
-    <el-dialog v-model="dialogVisible" :title="dialogMode === 'create' ? '新增任务' : '修改任务'" width="820px">
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="108px">
-        <div class="dialog-section-title">任务基础信息</div>
+    <el-dialog
+      v-model="dialogVisible"
+      :title="dialogMode === 'create' ? '新增任务' : '修改任务'"
+      width="720px"
+      destroy-on-close
+      @close="handleDialogClose"
+    >
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="110px">
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="任务名称" prop="taskName">
               <el-input v-model="form.taskName" placeholder="请输入任务名称" />
             </el-form-item>
           </el-col>
-
-          <el-col :span="12">
-            <el-form-item label="算法模式" prop="algorithmMode">
-              <el-select v-model="form.algorithmMode" style="width: 100%;">
-                <el-option label="RULE" value="RULE" />
-                <el-option label="AI" value="AI" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-        </el-row>
-
-        <div class="dialog-section-title">任务绑定信息</div>
-        <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="所属站点" prop="stationId">
-              <el-select
-                v-model="form.stationId"
-                filterable
-                placeholder="请选择站点"
-                style="width: 100%;"
-                @change="handleFormStationChange"
-              >
+              <el-select v-model="form.stationId" filterable clearable placeholder="请选择站点" style="width: 100%;" @change="handleFormStationChange">
                 <el-option
                   v-for="item in stationOptions"
                   :key="item.id"
@@ -210,10 +207,12 @@
               </el-select>
             </el-form-item>
           </el-col>
+        </el-row>
 
+        <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="所属设备" prop="deviceId">
-              <el-select v-model="form.deviceId" filterable placeholder="请选择设备" style="width: 100%;">
+              <el-select v-model="form.deviceId" filterable clearable placeholder="请选择设备" style="width: 100%;">
                 <el-option
                   v-for="item in filteredDeviceOptions"
                   :key="item.id"
@@ -223,37 +222,45 @@
               </el-select>
             </el-form-item>
           </el-col>
+          <el-col :span="12">
+            <el-form-item label="算法模式" prop="algorithmMode">
+              <el-radio-group v-model="form.algorithmMode">
+                <el-radio-button value="RULE">RULE</el-radio-button>
+                <el-radio-button value="AI">AI</el-radio-button>
+              </el-radio-group>
+            </el-form-item>
+          </el-col>
         </el-row>
 
-        <div class="dialog-section-title">监测参数</div>
         <el-row :gutter="16">
-          <el-col :span="8">
-            <el-form-item label="起始频率" prop="freqStartMhz">
-              <el-input-number v-model="form.freqStartMhz" :precision="3" :step="0.1" :min="0" style="width: 100%;" />
+          <el-col :span="12">
+            <el-form-item label="起始频率(MHz)" prop="freqStartMhz">
+              <el-input-number v-model="form.freqStartMhz" :min="0" :max="10000" :precision="3" style="width: 100%;" />
             </el-form-item>
           </el-col>
-
-          <el-col :span="8">
-            <el-form-item label="结束频率" prop="freqEndMhz">
-              <el-input-number v-model="form.freqEndMhz" :precision="3" :step="0.1" :min="0" style="width: 100%;" />
-            </el-form-item>
-          </el-col>
-
-          <el-col :span="8">
-            <el-form-item label="采样率" prop="sampleRateKhz">
-              <el-input-number v-model="form.sampleRateKhz" :precision="3" :step="10" :min="1" style="width: 100%;" />
+          <el-col :span="12">
+            <el-form-item label="结束频率(MHz)" prop="freqEndMhz">
+              <el-input-number v-model="form.freqEndMhz" :min="0" :max="10000" :precision="3" style="width: 100%;" />
             </el-form-item>
           </el-col>
         </el-row>
 
-        <div class="dialog-section-title">调度信息</div>
-        <el-form-item label="任务状态" prop="taskStatus">
-          <el-radio-group v-model="form.taskStatus">
-            <el-radio :value="0">未启动</el-radio>
-            <el-radio :value="1">运行中</el-radio>
-            <el-radio :value="2">已停止</el-radio>
-          </el-radio-group>
-        </el-form-item>
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="采样率(kHz)" prop="sampleRateKhz">
+              <el-input-number v-model="form.sampleRateKhz" :min="1" :max="100000" :precision="2" style="width: 100%;" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="任务状态" prop="taskStatus">
+              <el-radio-group v-model="form.taskStatus">
+                <el-radio :value="0">未启动</el-radio>
+                <el-radio :value="1">运行中</el-radio>
+                <el-radio :value="2">已停止</el-radio>
+              </el-radio-group>
+            </el-form-item>
+          </el-col>
+        </el-row>
 
         <el-form-item label="调度表达式" prop="cronExpr">
           <el-input v-model="form.cronExpr" placeholder="例如：0/5 * * * * ?" />
@@ -266,70 +273,87 @@
       </template>
     </el-dialog>
 
-    <el-drawer v-model="logDrawerVisible" size="860px" :title="`任务执行日志 - ${logTask.taskName || ''}`">
-      <div class="log-top-summary" v-if="latestLog">
-        <el-row :gutter="16">
-          <el-col :span="8">
-            <div class="summary-box">
-              <div class="summary-label">最近结果</div>
-              <div class="summary-value">
-                <el-tag :type="logStatusTag(latestLog.execStatus)">
-                  {{ logStatusText(latestLog.execStatus) }}
-                </el-tag>
-              </div>
-            </div>
-          </el-col>
+    <el-drawer
+      v-model="logDrawerVisible"
+      :title="logTask.taskName ? `任务日志 - ${logTask.taskName}` : '任务日志'"
+      size="760px"
+      destroy-on-close
+    >
+      <el-alert
+        type="info"
+        show-icon
+        :closable="false"
+        style="margin-bottom: 16px;"
+        title="日志说明：成功/失败/已停止描述的是调度执行记录，不代表设备是否在线。"
+      />
 
-          <el-col :span="8">
-            <div class="summary-box">
-              <div class="summary-label">最近执行时间</div>
-              <div class="summary-text">{{ formatTime(latestLog.executeTime) }}</div>
-            </div>
-          </el-col>
+      <el-card shadow="never" class="latest-log-card">
+        <template #header>
+          <div class="card-header">
+            <span>最新日志摘要</span>
+            <el-tag v-if="latestLog" :type="logStatusTag(latestLog.execStatus)">
+              {{ logStatusText(latestLog.execStatus) }}
+            </el-tag>
+          </div>
+        </template>
 
-          <el-col :span="8">
-            <div class="summary-box">
-              <div class="summary-label">最近执行耗时</div>
-              <div class="summary-text">{{ latestLog.durationMs || 0 }} ms</div>
-            </div>
-          </el-col>
-        </el-row>
-
-        <div class="latest-message">
-          <span class="latest-message-label">最近结果说明：</span>
-          <span>{{ latestLog.execMessage || '-' }}</span>
+        <div v-if="latestLog" class="latest-log-content">
+          <div class="latest-log-item">
+            <span class="label">执行时间：</span>
+            <span>{{ formatTime(latestLog.executeTime) }}</span>
+          </div>
+          <div class="latest-log-item">
+            <span class="label">触发方式：</span>
+            <span>{{ latestLog.triggerType || '-' }}</span>
+          </div>
+          <div class="latest-log-item">
+            <span class="label">执行耗时：</span>
+            <span>{{ latestLog.durationMs || 0 }} ms</span>
+          </div>
+          <div class="latest-log-item">
+            <span class="label">执行说明：</span>
+            <span>{{ latestLog.execMessage || '-' }}</span>
+          </div>
         </div>
-      </div>
+        <el-empty v-else description="暂无日志记录" :image-size="80" />
+      </el-card>
 
-      <el-table :data="logPage.records" stripe border v-loading="logLoading" empty-text="暂无执行日志">
+      <el-table
+        :data="logPage.records"
+        stripe
+        border
+        v-loading="logLoading"
+        empty-text="暂无日志数据"
+        style="margin-top: 16px;"
+      >
         <el-table-column type="index" label="序号" width="70" />
-        <el-table-column prop="execStatus" label="结果状态" width="120">
+        <el-table-column prop="executeTime" label="执行时间" min-width="180">
+          <template #default="scope">
+            {{ formatTime(scope.row.executeTime) }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="triggerType" label="触发方式" width="120" />
+        <el-table-column prop="execStatus" label="执行状态" width="110">
           <template #default="scope">
             <el-tag :type="logStatusTag(scope.row.execStatus)">
               {{ logStatusText(scope.row.execStatus) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="triggerType" label="触发方式" width="120" />
-        <el-table-column prop="execMessage" label="结果说明" min-width="260" show-overflow-tooltip />
-        <el-table-column prop="snapshotId" label="快照ID" width="110" />
-        <el-table-column prop="alarmId" label="告警ID" width="110" />
         <el-table-column prop="durationMs" label="耗时(ms)" width="110" />
-        <el-table-column prop="executeTime" label="执行时间" min-width="180">
-          <template #default="scope">
-            {{ formatTime(scope.row.executeTime) }}
-          </template>
-        </el-table-column>
+        <el-table-column prop="execMessage" label="执行说明" min-width="260" show-overflow-tooltip />
       </el-table>
 
       <div class="pagination-wrap">
         <el-pagination
           background
-          layout="total, prev, pager, next"
+          layout="total, sizes, prev, pager, next"
           :total="logPage.total"
           :current-page="logQuery.current"
           :page-size="logQuery.size"
+          :page-sizes="[10, 20, 30, 50]"
           @current-change="handleLogCurrentChange"
+          @size-change="handleLogSizeChange"
         />
       </div>
     </el-drawer>
@@ -349,6 +373,11 @@ import {
   stopTaskApi,
   updateTaskApi
 } from '../../api/manage'
+import {
+  taskStatusTag,
+  taskStatusText,
+  taskStatusTips
+} from '../../utils/status'
 
 const loading = ref(false)
 const submitLoading = ref(false)
@@ -430,24 +459,6 @@ const latestLog = computed(() => {
 const formatTime = (value) => {
   if (!value) return '-'
   return String(value).replace('T', ' ')
-}
-
-const taskStatusText = (status) => {
-  const map = {
-    0: '未启动',
-    1: '运行中',
-    2: '已停止'
-  }
-  return map[status] || '未知'
-}
-
-const taskStatusTag = (status) => {
-  const map = {
-    0: 'info',
-    1: 'success',
-    2: 'danger'
-  }
-  return map[status] || 'info'
 }
 
 const logStatusText = (status) => {
@@ -689,52 +700,47 @@ const handleDelete = async (row) => {
     if (pageState.records.length === 1 && queryForm.current > 1) {
       queryForm.current -= 1
     }
+
     await loadPage()
   } catch (error) {
-    if (error === 'cancel' || error === 'close') return
-    console.error(error)
-    ElMessage.error(error?.message || '任务删除失败')
+    if (error !== 'cancel') {
+      console.error(error)
+      ElMessage.error(error?.message || '任务删除失败')
+    }
   }
 }
 
-const handleStartTask = async (row) => {
+const handleStart = async (row) => {
   try {
-    await ElMessageBox.confirm(
-      `确认启动任务【${row.taskName}】吗？启动后将按调度表达式自动执行。`,
-      '启动任务',
-      { type: 'success' }
-    )
+    await ElMessageBox.confirm(`确认启动任务【${row.taskName}】吗？`, '启动确认', {
+      type: 'info'
+    })
 
     await startTaskApi(row.id)
     ElMessage.success('任务已启动')
     await loadPage()
   } catch (error) {
-    if (error === 'cancel' || error === 'close') return
-    console.error(error)
-    ElMessage.error(error?.message || '启动任务失败')
+    if (error !== 'cancel') {
+      console.error(error)
+      ElMessage.error(error?.message || '任务启动失败')
+    }
   }
 }
 
-const handleStopTask = async (row) => {
+const handleStop = async (row) => {
   try {
-    await ElMessageBox.confirm(
-      `确认停止任务【${row.taskName}】吗？停止后将不再自动执行。`,
-      '停止任务',
-      { type: 'warning' }
-    )
+    await ElMessageBox.confirm(`确认停止任务【${row.taskName}】吗？`, '停止确认', {
+      type: 'warning'
+    })
 
     await stopTaskApi(row.id)
     ElMessage.success('任务已停止')
     await loadPage()
-
-    if (logDrawerVisible.value && logTask.id === row.id) {
-      logQuery.current = 1
-      await loadTaskLogPage()
-    }
   } catch (error) {
-    if (error === 'cancel' || error === 'close') return
-    console.error(error)
-    ElMessage.error(error?.message || '停止任务失败')
+    if (error !== 'cancel') {
+      console.error(error)
+      ElMessage.error(error?.message || '任务停止失败')
+    }
   }
 }
 
@@ -742,6 +748,7 @@ const openLogDrawer = async (row) => {
   logTask.id = row.id
   logTask.taskName = row.taskName || ''
   logQuery.current = 1
+  logQuery.size = 10
   logDrawerVisible.value = true
   await loadTaskLogPage()
 }
@@ -751,79 +758,103 @@ const handleLogCurrentChange = async (page) => {
   await loadTaskLogPage()
 }
 
+const handleLogSizeChange = async (size) => {
+  logQuery.size = size
+  logQuery.current = 1
+  await loadTaskLogPage()
+}
+
 onMounted(async () => {
-  try {
-    await Promise.all([loadStations(), loadDevices()])
-    await loadPage()
-  } catch (error) {
-    console.error(error)
-    ElMessage.error(error?.message || '任务页面初始化失败')
-  }
+  await Promise.all([loadStations(), loadDevices(), loadPage()])
 })
 </script>
 
 <style scoped>
+.page-container {
+  min-height: calc(100vh - 112px);
+}
+
 .top-metrics {
   margin-bottom: 16px;
 }
 
 .metric-card {
-  border-radius: 20px;
+  position: relative;
   overflow: hidden;
+  border-radius: 18px;
+}
+
+.metric-card::after {
+  content: '';
+  position: absolute;
+  right: -18px;
+  bottom: -18px;
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .metric-label {
-  font-size: 14px;
-  color: #8a97ab;
-  font-weight: 600;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.88);
 }
 
 .metric-number {
-  margin-top: 10px;
+  margin-top: 14px;
   font-size: 34px;
-  font-weight: 800;
-  color: #1f2a37;
+  line-height: 1;
+  font-weight: 700;
+  color: #ffffff;
 }
 
 .metric-desc {
-  margin-top: 10px;
+  margin-top: 12px;
   font-size: 13px;
-  color: #8a97ab;
+  color: rgba(255, 255, 255, 0.86);
 }
 
-.metric-blue::before,
-.metric-cyan::before,
-.metric-green::before,
-.metric-orange::before {
-  content: '';
-  display: block;
-  height: 4px;
-  margin: -18px -22px 16px;
+.metric-blue {
+  background: linear-gradient(135deg, #409eff, #67c6ff);
 }
 
-.metric-blue::before {
-  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+.metric-cyan {
+  background: linear-gradient(135deg, #36cfc9, #5fe3da);
 }
-.metric-cyan::before {
-  background: linear-gradient(90deg, #06b6d4, #67e8f9);
+
+.metric-green {
+  background: linear-gradient(135deg, #67c23a, #85ce61);
 }
-.metric-green::before {
-  background: linear-gradient(90deg, #22c55e, #86efac);
+
+.metric-orange {
+  background: linear-gradient(135deg, #e6a23c, #f3c26b);
 }
-.metric-orange::before {
-  background: linear-gradient(90deg, #f59e0b, #fcd34d);
+
+.page-card {
+  border-radius: 18px;
+}
+
+.query-card {
+  margin-top: 0;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .header-title {
-  font-size: 17px;
-  font-weight: 800;
-  color: #1f2a37;
+  font-size: 16px;
+  font-weight: 700;
+  color: #303133;
 }
 
 .header-subtitle {
   margin-top: 4px;
   font-size: 13px;
-  color: #8a97ab;
+  color: #909399;
 }
 
 .header-actions {
@@ -832,78 +863,113 @@ onMounted(async () => {
   gap: 10px;
 }
 
+.filter-form {
+  margin-bottom: 10px;
+}
+
 .quick-tags {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
-  margin-top: 2px;
 }
 
 .quick-label {
-  color: #8a97ab;
   font-size: 13px;
+  color: #606266;
 }
 
 .click-tag {
   cursor: pointer;
+  user-select: none;
+}
+
+.beauty-table :deep(.el-table__header th) {
+  background: #f7f9fc;
+  color: #303133;
 }
 
 .range-text {
-  color: #334155;
+  color: #606266;
   font-weight: 600;
 }
 
-.dialog-section-title {
-  margin-bottom: 14px;
-  padding-left: 10px;
-  border-left: 4px solid #3b82f6;
-  font-size: 15px;
-  font-weight: 800;
-  color: #1f2a37;
+.pagination-wrap {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
 }
 
-.beauty-table {
-  margin-top: 4px;
-}
-
-.log-top-summary {
-  margin-bottom: 18px;
-}
-
-.summary-box {
+.latest-log-card {
   border-radius: 16px;
-  padding: 16px;
-  background: linear-gradient(135deg, #f8fbff, #eff6ff);
-  border: 1px solid #dbeafe;
 }
 
-.summary-label {
+.latest-log-content {
+  display: grid;
+  gap: 10px;
+}
+
+.latest-log-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   font-size: 13px;
-  color: #8a97ab;
+  color: #606266;
 }
 
-.summary-value {
-  margin-top: 12px;
+.latest-log-item .label {
+  min-width: 72px;
+  color: #303133;
+  font-weight: 600;
 }
 
-.summary-text {
-  margin-top: 12px;
-  font-size: 15px;
+.status-meaning-card {
+  margin-bottom: 16px;
+  border: 1px solid #e4ecf7;
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+}
+
+.status-meaning-header {
+  margin-bottom: 14px;
+}
+
+.status-meaning-title {
+  font-size: 16px;
   font-weight: 700;
-  color: #1f2a37;
+  color: #303133;
 }
 
-.latest-message {
-  margin-top: 14px;
-  padding: 14px 16px;
-  border-radius: 16px;
-  background: #f8fafc;
-  color: #475569;
-  line-height: 1.8;
+.status-meaning-subtitle {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #606266;
 }
 
-.latest-message-label {
-  font-weight: 700;
-  color: #1f2a37;
+.status-meaning-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.status-meaning-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  background: #f7faff;
+  border: 1px solid #e8eef8;
+  border-radius: 12px;
+}
+
+.status-meaning-text {
+  line-height: 1.6;
+  color: #606266;
+  font-size: 13px;
+}
+
+@media (max-width: 900px) {
+  .status-meaning-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

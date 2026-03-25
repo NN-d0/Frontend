@@ -19,27 +19,40 @@
 
       <el-col :span="6">
         <el-card class="metric-card metric-green" shadow="hover">
-          <div class="metric-label">运行中设备</div>
+          <div class="metric-label">在线设备</div>
           <div class="metric-number">{{ runningCount }}</div>
-          <div class="metric-desc">当前页内运行中设备数量</div>
+          <div class="metric-desc">当前页内离线超时内有采集数据的设备数量</div>
         </el-card>
       </el-col>
 
       <el-col :span="6">
         <el-card class="metric-card metric-red" shadow="hover">
-          <div class="metric-label">停用设备</div>
+          <div class="metric-label">离线设备</div>
           <div class="metric-number">{{ stopCount }}</div>
-          <div class="metric-desc">当前页内停用设备数量</div>
+          <div class="metric-desc">当前页内超过离线阈值未收到采集数据的设备数量</div>
         </el-card>
       </el-col>
     </el-row>
+
+    <el-card class="page-card status-meaning-card" shadow="never">
+      <div class="status-meaning-header">
+        <div class="status-meaning-title">状态说明</div>
+        <div class="status-meaning-subtitle">设备页展示的是“在线状态”，依据最近采集数据是否超时判定，不等同于任务是否启动。</div>
+      </div>
+      <div class="status-meaning-grid">
+        <div v-for="item in deviceStatusTips" :key="item.value" class="status-meaning-item">
+          <el-tag :type="item.tagType">{{ item.label }}</el-tag>
+          <div class="status-meaning-text">{{ item.meaning }}</div>
+        </div>
+      </div>
+    </el-card>
 
     <el-card class="page-card query-card" shadow="hover">
       <template #header>
         <div class="card-header">
           <div>
             <div class="header-title">设备查询</div>
-            <div class="header-subtitle">按站点、状态、关键字快速筛选设备</div>
+            <div class="header-subtitle">按站点、在线状态、关键字快速筛选设备</div>
           </div>
           <div class="header-actions">
             <el-button type="primary" @click="openCreateDialog">新增设备</el-button>
@@ -60,10 +73,10 @@
           </el-select>
         </el-form-item>
 
-        <el-form-item label="运行状态">
+        <el-form-item label="设备在线状态">
           <el-select v-model="queryForm.runStatus" clearable placeholder="请选择状态" style="width: 180px;">
-            <el-option label="运行中" :value="1" />
-            <el-option label="停用" :value="0" />
+            <el-option label="在线" :value="1" />
+            <el-option label="离线" :value="0" />
           </el-select>
         </el-form-item>
 
@@ -80,8 +93,8 @@
       <div class="quick-tags">
         <span class="quick-label">快捷状态：</span>
         <el-tag class="click-tag" :effect="queryForm.runStatus === '' ? 'dark' : 'plain'" @click="setQuickStatus('')">全部</el-tag>
-        <el-tag class="click-tag" type="success" :effect="queryForm.runStatus === 1 ? 'dark' : 'plain'" @click="setQuickStatus(1)">运行中</el-tag>
-        <el-tag class="click-tag" type="danger" :effect="queryForm.runStatus === 0 ? 'dark' : 'plain'" @click="setQuickStatus(0)">停用</el-tag>
+        <el-tag class="click-tag" type="success" :effect="queryForm.runStatus === 1 ? 'dark' : 'plain'" @click="setQuickStatus(1)">在线</el-tag>
+        <el-tag class="click-tag" type="danger" :effect="queryForm.runStatus === 0 ? 'dark' : 'plain'" @click="setQuickStatus(0)">离线</el-tag>
       </div>
     </el-card>
 
@@ -89,13 +102,13 @@
       <template #header>
         <div class="card-header">
           <div>
-            <div class="header-title">设备状态地图</div>
-            <div class="header-subtitle">按站点展示设备状态与数量</div>
+            <div class="header-title">设备在线态势地图</div>
+            <div class="header-subtitle">按站点展示设备在线/离线分布</div>
           </div>
           <div class="legend-row">
-            <span class="legend-item"><i class="legend-dot success"></i>全部运行</span>
+            <span class="legend-item"><i class="legend-dot success"></i>全部在线</span>
             <span class="legend-item"><i class="legend-dot warning"></i>混合状态</span>
-            <span class="legend-item"><i class="legend-dot danger"></i>全部停用</span>
+            <span class="legend-item"><i class="legend-dot danger"></i>全部离线</span>
             <span class="legend-item"><i class="legend-dot info"></i>暂无设备</span>
           </div>
         </div>
@@ -128,14 +141,20 @@
       >
         <el-table-column type="index" label="序号" width="70" />
         <el-table-column prop="deviceCode" label="设备编码" min-width="150" />
-        <el-table-column prop="deviceName" label="设备名称" min-width="180" />
+        <el-table-column prop="deviceName" label="设备名称" min-width="160" />
         <el-table-column prop="stationName" label="所属站点" min-width="140" />
-        <el-table-column prop="deviceType" label="设备类型" min-width="150" />
-        <el-table-column prop="ipAddr" label="IP 地址" min-width="150" />
-        <el-table-column prop="runStatus" label="运行状态" width="110">
+        <el-table-column prop="deviceType" label="设备类型" width="150">
           <template #default="scope">
-            <el-tag :type="scope.row.runStatus === 1 ? 'success' : 'danger'">
-              {{ scope.row.runStatus === 1 ? '运行中' : '停用' }}
+            <el-tag type="info">
+              {{ scope.row.deviceType }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="ipAddr" label="IP 地址" min-width="150" />
+        <el-table-column prop="runStatus" label="在线状态" width="110">
+          <template #default="scope">
+            <el-tag :type="deviceOnlineTag(scope.row.runStatus)">
+              {{ deviceOnlineText(scope.row.runStatus) }}
             </el-tag>
           </template>
         </el-table-column>
@@ -156,7 +175,7 @@
       <div class="pagination-wrap">
         <el-pagination
           background
-          layout="total, sizes, prev, pager, next, jumper"
+          layout="total, sizes, prev, pager, next"
           :total="pageState.total"
           :current-page="queryForm.current"
           :page-size="queryForm.size"
@@ -167,17 +186,20 @@
       </div>
     </el-card>
 
-    <el-dialog v-model="dialogVisible" :title="dialogMode === 'create' ? '新增设备' : '修改设备'" width="760px">
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="96px">
-        <div class="dialog-section-title">基础信息</div>
-
+    <el-dialog
+      v-model="dialogVisible"
+      :title="dialogMode === 'create' ? '新增设备' : '修改设备'"
+      width="720px"
+      destroy-on-close
+      @close="handleDeviceDialogClose"
+    >
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="110px">
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="设备编码" prop="deviceCode">
               <el-input v-model="form.deviceCode" placeholder="请输入设备编码" />
             </el-form-item>
           </el-col>
-
           <el-col :span="12">
             <el-form-item label="设备名称" prop="deviceName">
               <el-input v-model="form.deviceName" placeholder="请输入设备名称" />
@@ -187,47 +209,46 @@
 
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="设备类型" prop="deviceType">
-              <el-select v-model="form.deviceType" placeholder="请选择设备类型" style="width: 100%;">
-                <el-option label="SPECTRUM_SENSOR" value="SPECTRUM_SENSOR" />
-                <el-option label="RADIO_MONITOR" value="RADIO_MONITOR" />
-                <el-option label="RF_RECEIVER" value="RF_RECEIVER" />
+            <el-form-item label="所属站点" prop="stationId">
+              <el-select v-model="form.stationId" filterable clearable placeholder="请选择站点" style="width: 100%;">
+                <el-option
+                  v-for="item in stationOptions"
+                  :key="item.id"
+                  :label="item.stationName"
+                  :value="item.id"
+                />
               </el-select>
             </el-form-item>
           </el-col>
-
           <el-col :span="12">
-            <el-form-item label="IP地址" prop="ipAddr">
-              <el-input v-model="form.ipAddr" placeholder="请输入IP地址" />
+            <el-form-item label="设备类型" prop="deviceType">
+              <el-select v-model="form.deviceType" placeholder="请选择设备类型" style="width: 100%;">
+                <el-option label="SPECTRUM_SENSOR" value="SPECTRUM_SENSOR" />
+                <el-option label="MONITOR_HOST" value="MONITOR_HOST" />
+                <el-option label="PORTABLE_NODE" value="PORTABLE_NODE" />
+              </el-select>
             </el-form-item>
           </el-col>
         </el-row>
 
-        <div class="dialog-section-title">部署信息</div>
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="IP 地址" prop="ipAddr">
+              <el-input v-model="form.ipAddr" placeholder="请输入设备 IP" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="设备在线状态" prop="runStatus">
+              <el-radio-group v-model="form.runStatus">
+                <el-radio :value="1">在线</el-radio>
+                <el-radio :value="0">离线</el-radio>
+              </el-radio-group>
+            </el-form-item>
+          </el-col>
+        </el-row>
 
-        <el-form-item label="所属站点" prop="stationId">
-          <div class="station-picker-row">
-            <el-select v-model="form.stationId" filterable placeholder="请选择站点" style="flex: 1;">
-              <el-option
-                v-for="item in stationOptions"
-                :key="item.id"
-                :label="item.stationName"
-                :value="item.id"
-              />
-            </el-select>
-            <el-button @click="openMapDialog">地图选择/新建站点</el-button>
-          </div>
-        </el-form-item>
-
-        <el-form-item label="运行状态" prop="runStatus">
-          <el-radio-group v-model="form.runStatus">
-            <el-radio :value="1">运行中</el-radio>
-            <el-radio :value="0">停用</el-radio>
-          </el-radio-group>
-        </el-form-item>
-
-        <el-form-item label="备注">
-          <el-input v-model="form.remark" type="textarea" :rows="3" placeholder="请输入备注" />
+        <el-form-item label="备注" prop="remark">
+          <el-input v-model="form.remark" type="textarea" :rows="3" placeholder="请输入备注信息" />
         </el-form-item>
       </el-form>
 
@@ -239,54 +260,73 @@
 
     <el-dialog
       v-model="mapDialogVisible"
-      title="地图选择站点 / 新建站点"
+      title="地图选择 / 新建站点"
       width="860px"
-      @opened="handleMapDialogOpened"
+      destroy-on-close
+      @close="handleMapDialogClose"
     >
-      <div class="map-tip">
-        1. 点击已有站点标记，直接选中站点。<br />
-        2. 点击地图空白位置，可新建站点并自动选中。
+      <div class="map-dialog-toolbar">
+        <el-alert
+          type="info"
+          :closable="false"
+          show-icon
+          title="点击已有站点可直接选中；点击地图空白处可创建一个新的站点。"
+        />
       </div>
-      <div ref="stationMapRef" class="map-box"></div>
+
+      <div ref="stationMapRef" class="station-map-box"></div>
+
+      <el-card class="select-station-card" shadow="never">
+        <div class="select-station-title">当前选中站点</div>
+        <div class="select-station-content">
+          <template v-if="selectedStation.id">
+            <div>站点名称：{{ selectedStation.stationName || '-' }}</div>
+            <div>站点编码：{{ selectedStation.stationCode || '-' }}</div>
+            <div>经纬度：{{ selectedStation.longitude }}, {{ selectedStation.latitude }}</div>
+          </template>
+          <template v-else>
+            <el-empty description="尚未选择站点" :image-size="70" />
+          </template>
+        </div>
+      </el-card>
 
       <template #footer>
-        <el-button @click="mapDialogVisible = false">关闭</el-button>
+        <el-button @click="handleMapDialogClose">关闭</el-button>
+        <el-button type="primary" :disabled="!selectedStation.id" @click="handleConfirmSelectedStation">使用该站点</el-button>
+        <el-button type="success" @click="openCreateStationDialog">新建站点</el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="stationDialogVisible" title="新建站点" width="620px">
-      <el-form ref="stationFormRef" :model="stationForm" :rules="stationRules" label-width="100px">
-        <el-row :gutter="16">
-          <el-col :span="12">
-            <el-form-item label="站点编码" prop="stationCode">
-              <el-input v-model="stationForm.stationCode" placeholder="请输入站点编码" />
-            </el-form-item>
-          </el-col>
-
-          <el-col :span="12">
-            <el-form-item label="站点名称" prop="stationName">
-              <el-input v-model="stationForm.stationName" placeholder="请输入站点名称" />
-            </el-form-item>
-          </el-col>
-        </el-row>
+    <el-dialog
+      v-model="stationDialogVisible"
+      title="新建站点"
+      width="620px"
+      destroy-on-close
+      @close="handleStationDialogClose"
+    >
+      <el-form ref="stationFormRef" :model="stationForm" :rules="stationRules" label-width="110px">
+        <el-form-item label="站点编码" prop="stationCode">
+          <el-input v-model="stationForm.stationCode" placeholder="请输入站点编码" />
+        </el-form-item>
+        <el-form-item label="站点名称" prop="stationName">
+          <el-input v-model="stationForm.stationName" placeholder="请输入站点名称" />
+        </el-form-item>
+        <el-form-item label="位置说明" prop="locationText">
+          <el-input v-model="stationForm.locationText" placeholder="请输入位置说明" />
+        </el-form-item>
 
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="经度" prop="longitude">
-              <el-input v-model="stationForm.longitude" placeholder="请输入经度" />
+              <el-input-number v-model="stationForm.longitude" :precision="6" :step="0.000001" style="width: 100%;" />
             </el-form-item>
           </el-col>
-
           <el-col :span="12">
             <el-form-item label="纬度" prop="latitude">
-              <el-input v-model="stationForm.latitude" placeholder="请输入纬度" />
+              <el-input-number v-model="stationForm.latitude" :precision="6" :step="0.000001" style="width: 100%;" />
             </el-form-item>
           </el-col>
         </el-row>
-
-        <el-form-item label="位置描述" prop="locationText">
-          <el-input v-model="stationForm.locationText" placeholder="请输入位置描述" />
-        </el-form-item>
       </el-form>
 
       <template #footer>
@@ -309,6 +349,13 @@ import {
   getDevicePageApi,
   updateDeviceApi
 } from '../../api/manage'
+import {
+  deviceOnlineColor,
+  deviceOnlineTag,
+  deviceOnlineText,
+  deviceStatusTips,
+  getStationDeviceOnlineMeta
+} from '../../utils/status'
 
 const loading = ref(false)
 const submitLoading = ref(false)
@@ -324,6 +371,7 @@ const deviceMapRef = ref(null)
 
 const stationOptions = ref([])
 const allDeviceList = ref([])
+
 const pageState = reactive({
   total: 0,
   records: []
@@ -351,9 +399,18 @@ const form = reactive({
 const stationForm = reactive({
   stationCode: '',
   stationName: '',
-  longitude: '',
-  latitude: '',
-  locationText: ''
+  locationText: '',
+  longitude: 114.057868,
+  latitude: 22.543099
+})
+
+const selectedStation = reactive({
+  id: null,
+  stationCode: '',
+  stationName: '',
+  locationText: '',
+  longitude: null,
+  latitude: null
 })
 
 const rules = {
@@ -361,16 +418,16 @@ const rules = {
   deviceName: [{ required: true, message: '请输入设备名称', trigger: 'blur' }],
   stationId: [{ required: true, message: '请选择所属站点', trigger: 'change' }],
   deviceType: [{ required: true, message: '请选择设备类型', trigger: 'change' }],
-  ipAddr: [{ required: true, message: '请输入IP地址', trigger: 'blur' }],
-  runStatus: [{ required: true, message: '请选择运行状态', trigger: 'change' }]
+  ipAddr: [{ required: true, message: '请输入 IP 地址', trigger: 'blur' }],
+  runStatus: [{ required: true, message: '请选择设备在线状态', trigger: 'change' }]
 }
 
 const stationRules = {
   stationCode: [{ required: true, message: '请输入站点编码', trigger: 'blur' }],
   stationName: [{ required: true, message: '请输入站点名称', trigger: 'blur' }],
-  longitude: [{ required: true, message: '经度不能为空', trigger: 'blur' }],
-  latitude: [{ required: true, message: '纬度不能为空', trigger: 'blur' }],
-  locationText: [{ required: true, message: '请输入位置描述', trigger: 'blur' }]
+  locationText: [{ required: true, message: '请输入位置说明', trigger: 'blur' }],
+  longitude: [{ required: true, message: '请输入经度', trigger: 'change' }],
+  latitude: [{ required: true, message: '请输入纬度', trigger: 'change' }]
 }
 
 const runningCount = computed(() => pageState.records.filter(item => item.runStatus === 1).length)
@@ -398,26 +455,7 @@ const buildStationDeviceMap = () => {
   return map
 }
 
-const getStationStatusMeta = (devices) => {
-  if (!devices || !devices.length) {
-    return { color: '#909399', text: '暂无设备', badge: '0' }
-  }
-
-  const running = devices.filter(item => item.runStatus === 1).length
-  const stop = devices.filter(item => item.runStatus === 0).length
-
-  if (running > 0 && stop === 0) {
-    return { color: '#67c23a', text: '全部运行', badge: `${devices.length}` }
-  }
-  if (running > 0 && stop > 0) {
-    return { color: '#e6a23c', text: '混合状态', badge: `${devices.length}` }
-  }
-  if (running === 0 && stop > 0) {
-    return { color: '#f56c6c', text: '全部停用', badge: `${devices.length}` }
-  }
-
-  return { color: '#909399', text: '暂无设备', badge: `${devices.length}` }
-}
+const getStationStatusMeta = (devices) => getStationDeviceOnlineMeta(devices)
 
 const buildStatusMarkerHtml = (station, devices) => {
   const meta = getStationStatusMeta(devices)
@@ -467,13 +505,13 @@ const buildStatusMarkerHtml = (station, devices) => {
 
 const buildStationPopupHtml = (station, deviceList) => {
   const total = deviceList.length
-  const running = deviceList.filter(item => item.runStatus === 1).length
-  const stop = deviceList.filter(item => item.runStatus === 0).length
+  const online = deviceList.filter(item => item.runStatus === 1).length
+  const offline = deviceList.filter(item => item.runStatus === 0).length
 
   const detailHtml = deviceList.length > 0
     ? deviceList.map(item => {
-        const statusText = item.runStatus === 1 ? '运行中' : '停用'
-        const statusColor = item.runStatus === 1 ? '#67c23a' : '#f56c6c'
+        const statusText = deviceOnlineText(item.runStatus)
+        const statusColor = deviceOnlineColor(item.runStatus)
         return `
           <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding:8px 10px;background:#f7f9fc;border-radius:8px;">
             <span style="color:#303133;">${item.deviceName}</span>
@@ -489,7 +527,7 @@ const buildStationPopupHtml = (station, deviceList) => {
       <div style="margin-top:8px;color:#606266;">站点编码：${station.stationCode || '-'}</div>
       <div style="margin-top:4px;color:#606266;">位置：${station.locationText || '-'}</div>
       <div style="margin-top:4px;color:#606266;">设备总数：${total}</div>
-      <div style="margin-top:4px;color:#606266;">运行中：${running} / 停用：${stop}</div>
+      <div style="margin-top:4px;color:#606266;">在线：${online} / 离线：${offline}</div>
       <div style="margin-top:12px;font-weight:700;color:#303133;">设备明细</div>
       ${detailHtml}
     </div>
@@ -556,27 +594,34 @@ const buildPendingMarkerHtml = () => {
   `
 }
 
-const createDivIcon = (html, width = 48, height = 58, anchorX = 24, anchorY = 58) => {
+const createDivIcon = (html, width = 48, height = 58, anchorX = 24, anchorY = 58, popupY = -48) => {
   return L.divIcon({
-    className: 'custom-map-marker',
+    className: 'custom-div-icon',
     html,
     iconSize: [width, height],
     iconAnchor: [anchorX, anchorY],
-    popupAnchor: [0, -48]
+    popupAnchor: [0, popupY]
   })
 }
 
 const initDeviceStatusMap = () => {
-  if (deviceStatusMap) return
-  deviceStatusMap = L.map(deviceMapRef.value).setView([22.55, 114.0], 10)
+  if (deviceStatusMap || !deviceMapRef.value) return
+
+  deviceStatusMap = L.map(deviceMapRef.value, {
+    zoomControl: true
+  }).setView([22.55, 114.05], 10)
+
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap'
   }).addTo(deviceStatusMap)
+
   deviceStatusLayer = L.layerGroup().addTo(deviceStatusMap)
 }
 
 const renderDeviceStatusMap = async () => {
   initDeviceStatusMap()
+  if (!deviceStatusMap || !deviceStatusLayer) return
+
   deviceStatusLayer.clearLayers()
 
   const stationDeviceMap = buildStationDeviceMap()
@@ -584,34 +629,32 @@ const renderDeviceStatusMap = async () => {
 
   validStations.forEach(station => {
     const devices = stationDeviceMap.get(station.id) || []
-
-    const marker = L.marker(
-      [Number(station.latitude), Number(station.longitude)],
-      { icon: createDivIcon(buildStatusMarkerHtml(station, devices)) }
-    )
+    const marker = L.marker([station.latitude, station.longitude], {
+      icon: createDivIcon(buildStatusMarkerHtml(station, devices))
+    })
 
     marker.bindPopup(buildStationPopupHtml(station, devices), {
-      maxWidth: 340,
-      className: 'beauty-popup'
+      maxWidth: 340
     })
 
     marker.addTo(deviceStatusLayer)
   })
 
-  if (validStations.length > 0) {
-    const latlngs = validStations.map(item => [Number(item.latitude), Number(item.longitude)])
-    deviceStatusMap.fitBounds(latlngs, { padding: [30, 30] })
-  }
+  await nextTick()
 
-  setTimeout(() => {
-    deviceStatusMap?.invalidateSize()
-  }, 200)
+  if (validStations.length > 0) {
+    const bounds = L.latLngBounds(validStations.map(item => [item.latitude, item.longitude]))
+    deviceStatusMap.fitBounds(bounds.pad(0.25))
+  }
 }
 
 const initStationSelectMap = () => {
-  if (stationSelectMap) return
+  if (stationSelectMap || !stationMapRef.value) return
 
-  stationSelectMap = L.map(stationMapRef.value).setView([22.55, 114.0], 10)
+  stationSelectMap = L.map(stationMapRef.value, {
+    zoomControl: true
+  }).setView([22.55, 114.05], 11)
+
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap'
   }).addTo(stationSelectMap)
@@ -619,77 +662,59 @@ const initStationSelectMap = () => {
   stationSelectLayer = L.layerGroup().addTo(stationSelectMap)
 
   stationSelectMap.on('click', (event) => {
-    const { lat, lng } = event.latlng
-
-    stationForm.stationCode = `ST${Date.now()}`
-    stationForm.stationName = ''
-    stationForm.longitude = Number(lng).toFixed(6)
-    stationForm.latitude = Number(lat).toFixed(6)
-    stationForm.locationText = `${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)}`
-    stationDialogVisible.value = true
-
-    setTimeout(() => {
-      stationFormRef.value?.clearValidate?.()
-    }, 0)
-
     if (pendingCreateMarker) {
       pendingCreateMarker.remove()
+      pendingCreateMarker = null
     }
 
-    pendingCreateMarker = L.marker(
-      [lat, lng],
-      { icon: createDivIcon(buildPendingMarkerHtml(), 36, 46, 18, 46) }
-    ).addTo(stationSelectMap)
+    selectedStation.id = null
+    selectedStation.stationCode = ''
+    selectedStation.stationName = ''
+    selectedStation.locationText = ''
+    selectedStation.longitude = Number(event.latlng.lng.toFixed(6))
+    selectedStation.latitude = Number(event.latlng.lat.toFixed(6))
+
+    stationForm.longitude = selectedStation.longitude
+    stationForm.latitude = selectedStation.latitude
+
+    pendingCreateMarker = L.marker([event.latlng.lat, event.latlng.lng], {
+      icon: createDivIcon(buildPendingMarkerHtml(), 36, 42, 18, 42, -36)
+    }).addTo(stationSelectLayer)
   })
 }
 
 const renderStationSelectMap = async () => {
   initStationSelectMap()
+  if (!stationSelectMap || !stationSelectLayer) return
+
   stationSelectLayer.clearLayers()
+  pendingCreateMarker = null
 
   const validStations = stationOptions.value.filter(item => item.latitude && item.longitude)
 
   validStations.forEach(station => {
-    const marker = L.marker(
-      [Number(station.latitude), Number(station.longitude)],
-      { icon: createDivIcon(buildSelectMarkerHtml(station), 44, 48, 22, 48) }
-    )
-
-    marker.bindPopup(`
-      <div style="width:240px;">
-        <div style="font-size:15px;font-weight:700;color:#303133;">${station.stationName || '-'}</div>
-        <div style="margin-top:8px;color:#606266;">站点编码：${station.stationCode || '-'}</div>
-        <div style="margin-top:4px;color:#606266;">位置：${station.locationText || '-'}</div>
-        <div style="margin-top:10px;color:#409eff;font-weight:700;">点击即可选中此站点</div>
-      </div>
-    `, {
-      maxWidth: 280,
-      className: 'beauty-popup'
+    const marker = L.marker([station.latitude, station.longitude], {
+      icon: createDivIcon(buildSelectMarkerHtml(station), 82, 48, 22, 48, -40)
     })
 
     marker.on('click', () => {
-      form.stationId = station.id
-      setTimeout(() => {
-        ElMessage.success(`已选中站点：${station.stationName}`)
-        mapDialogVisible.value = false
-      }, 200)
+      selectedStation.id = station.id
+      selectedStation.stationCode = station.stationCode || ''
+      selectedStation.stationName = station.stationName || ''
+      selectedStation.locationText = station.locationText || ''
+      selectedStation.longitude = station.longitude
+      selectedStation.latitude = station.latitude
     })
 
     marker.addTo(stationSelectLayer)
   })
 
+  await nextTick()
+
   if (validStations.length > 0) {
-    const latlngs = validStations.map(item => [Number(item.latitude), Number(item.longitude)])
-    stationSelectMap.fitBounds(latlngs, { padding: [30, 30] })
+    const bounds = L.latLngBounds(validStations.map(item => [item.latitude, item.longitude]))
+    stationSelectMap.fitBounds(bounds.pad(0.25))
   }
-
-  if (pendingCreateMarker) {
-    pendingCreateMarker.addTo(stationSelectMap)
-  }
-
-  setTimeout(() => {
-    stationSelectMap?.invalidateSize()
-  }, 200)
 }
 
 const loadStationOptions = async () => {
@@ -817,16 +842,6 @@ const validateDeviceForm = async () => {
   }
 }
 
-const validateStationForm = async () => {
-  if (!stationFormRef.value) return false
-  try {
-    await stationFormRef.value.validate()
-    return true
-  } catch (error) {
-    return false
-  }
-}
-
 const handleSubmit = async () => {
   const valid = await validateDeviceForm()
   if (!valid) {
@@ -849,13 +864,8 @@ const handleSubmit = async () => {
     return
   }
 
-  if (!form.deviceType) {
-    ElMessage.warning('请选择设备类型')
-    return
-  }
-
   if (!form.ipAddr?.trim()) {
-    ElMessage.warning('请输入IP地址')
+    ElMessage.warning('请输入设备 IP')
     return
   }
 
@@ -867,7 +877,7 @@ const handleSubmit = async () => {
     deviceType: form.deviceType,
     ipAddr: form.ipAddr.trim(),
     runStatus: form.runStatus,
-    remark: form.remark
+    remark: form.remark?.trim() || ''
   }
 
   try {
@@ -907,32 +917,66 @@ const handleDelete = async (row) => {
 
     await refreshAllData()
   } catch (error) {
-    if (error === 'cancel' || error === 'close') return
-    console.error(error)
-    ElMessage.error(error?.message || '设备删除失败')
+    if (error !== 'cancel') {
+      console.error(error)
+      ElMessage.error(error?.message || '设备删除失败')
+    }
   }
 }
 
-const openMapDialog = () => {
-  mapDialogVisible.value = true
+const resetSelectedStation = () => {
+  selectedStation.id = null
+  selectedStation.stationCode = ''
+  selectedStation.stationName = ''
+  selectedStation.locationText = ''
+  selectedStation.longitude = null
+  selectedStation.latitude = null
 }
 
-const handleMapDialogOpened = async () => {
+const openMapDialog = async () => {
+  mapDialogVisible.value = true
+  resetSelectedStation()
   await nextTick()
   await renderStationSelectMap()
 }
 
-const resetStationForm = () => {
+const handleMapDialogClose = () => {
+  mapDialogVisible.value = false
+  resetSelectedStation()
+}
+
+const handleConfirmSelectedStation = () => {
+  if (!selectedStation.id) {
+    ElMessage.warning('请先选择一个站点')
+    return
+  }
+
+  form.stationId = selectedStation.id
+  mapDialogVisible.value = false
+  ElMessage.success('已选择站点')
+}
+
+const openCreateStationDialog = async () => {
+  stationDialogVisible.value = true
   stationForm.stationCode = ''
   stationForm.stationName = ''
-  stationForm.longitude = ''
-  stationForm.latitude = ''
   stationForm.locationText = ''
+  await clearStationValidate()
 }
 
 const handleStationDialogClose = () => {
   stationDialogVisible.value = false
   stationFormRef.value?.clearValidate?.()
+}
+
+const validateStationForm = async () => {
+  if (!stationFormRef.value) return false
+  try {
+    await stationFormRef.value.validate()
+    return true
+  } catch (error) {
+    return false
+  }
 }
 
 const handleCreateStation = async () => {
@@ -942,70 +986,32 @@ const handleCreateStation = async () => {
     return
   }
 
-  if (!stationForm.stationCode?.trim()) {
-    ElMessage.warning('请输入站点编码')
-    return
-  }
-
-  if (!stationForm.stationName?.trim()) {
-    ElMessage.warning('请输入站点名称')
-    return
-  }
-
-  if (!stationForm.longitude?.trim()) {
-    ElMessage.warning('请输入经度')
-    return
-  }
-
-  if (!stationForm.latitude?.trim()) {
-    ElMessage.warning('请输入纬度')
-    return
-  }
-
-  if (!stationForm.locationText?.trim()) {
-    ElMessage.warning('请输入位置描述')
-    return
-  }
-
   const payload = {
     stationCode: stationForm.stationCode.trim(),
     stationName: stationForm.stationName.trim(),
-    longitude: stationForm.longitude.trim(),
-    latitude: stationForm.latitude.trim(),
-    locationText: stationForm.locationText.trim()
+    locationText: stationForm.locationText.trim(),
+    longitude: stationForm.longitude,
+    latitude: stationForm.latitude
   }
 
   try {
     stationSubmitLoading.value = true
-    await createStationApi(payload)
+    const res = await createStationApi(payload)
+    const created = res.data || {}
     ElMessage.success('站点新增成功')
-
-    const targetCode = stationForm.stationCode
-    stationDialogVisible.value = false
-    stationFormRef.value?.clearValidate?.()
-    resetStationForm()
-
-    if (pendingCreateMarker) {
-      pendingCreateMarker.remove()
-      pendingCreateMarker = null
-    }
 
     await loadStationOptions()
     await loadDeviceMapData()
+    await nextTick()
+    await renderDeviceStatusMap()
+    await renderStationSelectMap()
 
-    const created = stationOptions.value.find(item => item.stationCode === targetCode)
-    if (created) {
+    if (created.id) {
       form.stationId = created.id
     }
 
-    await nextTick()
-    await renderStationSelectMap()
-    await renderDeviceStatusMap()
-
-    if (created) {
-      ElMessage.success(`已自动选中新站点：${created.stationName}`)
-      mapDialogVisible.value = false
-    }
+    stationDialogVisible.value = false
+    stationFormRef.value?.clearValidate?.()
   } catch (error) {
     console.error(error)
     ElMessage.error(error?.message || '站点新增失败')
@@ -1015,8 +1021,12 @@ const handleCreateStation = async () => {
 }
 
 const handleResize = () => {
-  deviceStatusMap?.invalidateSize()
-  stationSelectMap?.invalidateSize()
+  if (deviceStatusMap) {
+    deviceStatusMap.invalidateSize()
+  }
+  if (stationSelectMap) {
+    stationSelectMap.invalidateSize()
+  }
 }
 
 onMounted(async () => {
@@ -1040,58 +1050,72 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.page-container {
+  min-height: calc(100vh - 112px);
+}
+
 .top-metrics {
   margin-bottom: 16px;
 }
 
 .metric-card {
-  border-radius: 20px;
+  position: relative;
   overflow: hidden;
+  border-radius: 18px;
+}
+
+.metric-card::after {
+  content: '';
+  position: absolute;
+  right: -20px;
+  bottom: -20px;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .metric-label {
-  font-size: 14px;
-  color: #8a97ab;
-  font-weight: 600;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .metric-number {
-  margin-top: 10px;
+  margin-top: 14px;
   font-size: 34px;
-  font-weight: 800;
-  color: #1f2a37;
+  line-height: 1;
+  font-weight: 700;
+  color: #ffffff;
 }
 
 .metric-desc {
-  margin-top: 10px;
+  margin-top: 12px;
   font-size: 13px;
-  color: #8a97ab;
+  color: rgba(255, 255, 255, 0.88);
 }
 
-.metric-blue::before,
-.metric-cyan::before,
-.metric-green::before,
-.metric-red::before {
-  content: '';
-  display: block;
-  height: 4px;
-  margin: -18px -22px 16px;
+.metric-blue {
+  background: linear-gradient(135deg, #409eff, #67c6ff);
 }
 
-.metric-blue::before {
-  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+.metric-cyan {
+  background: linear-gradient(135deg, #36cfc9, #5fe3da);
 }
 
-.metric-cyan::before {
-  background: linear-gradient(90deg, #06b6d4, #67e8f9);
+.metric-green {
+  background: linear-gradient(135deg, #67c23a, #85ce61);
 }
 
-.metric-green::before {
-  background: linear-gradient(90deg, #22c55e, #86efac);
+.metric-red {
+  background: linear-gradient(135deg, #f56c6c, #ff8f8f);
 }
 
-.metric-red::before {
-  background: linear-gradient(90deg, #ef4444, #fca5a5);
+.page-card {
+  border-radius: 18px;
+}
+
+.query-card {
+  margin-top: 0;
 }
 
 .card-header {
@@ -1102,15 +1126,15 @@ onUnmounted(() => {
 }
 
 .header-title {
-  font-size: 17px;
-  font-weight: 800;
-  color: #1f2a37;
+  font-size: 16px;
+  font-weight: 700;
+  color: #303133;
 }
 
 .header-subtitle {
   margin-top: 4px;
   font-size: 13px;
-  color: #8a97ab;
+  color: #909399;
 }
 
 .header-actions {
@@ -1119,20 +1143,25 @@ onUnmounted(() => {
   gap: 10px;
 }
 
+.filter-form {
+  margin-bottom: 10px;
+}
+
 .quick-tags {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
-  margin-top: 2px;
 }
 
 .quick-label {
-  color: #8a97ab;
   font-size: 13px;
+  color: #606266;
 }
 
 .click-tag {
   cursor: pointer;
+  user-select: none;
 }
 
 .legend-row {
@@ -1140,11 +1169,13 @@ onUnmounted(() => {
   align-items: center;
   gap: 14px;
   flex-wrap: wrap;
+  font-size: 13px;
+  color: #606266;
 }
 
 .legend-item {
-  font-size: 12px;
-  color: #606266;
+  display: inline-flex;
+  align-items: center;
 }
 
 .legend-dot {
@@ -1173,37 +1204,108 @@ onUnmounted(() => {
 
 .map-tip {
   margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f5f7fa;
   color: #606266;
   font-size: 13px;
-  line-height: 1.8;
 }
 
 .map-box {
   width: 100%;
   height: 420px;
-  border-radius: 18px;
+  border-radius: 14px;
   overflow: hidden;
-  background: #f8fbff;
 }
 
-.station-picker-row {
-  display: flex;
-  width: 100%;
-  gap: 10px;
-}
-
-.dialog-section-title {
-  margin-bottom: 14px;
-  padding-left: 10px;
-  border-left: 4px solid #3b82f6;
-  font-size: 15px;
-  font-weight: 800;
-  color: #1f2a37;
+.beauty-table :deep(.el-table__header th) {
+  background: #f7f9fc;
+  color: #303133;
 }
 
 .pagination-wrap {
-  margin-top: 18px;
   display: flex;
   justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.map-dialog-toolbar {
+  margin-bottom: 12px;
+}
+
+.station-map-box {
+  width: 100%;
+  height: 420px;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.select-station-card {
+  margin-top: 16px;
+  border-radius: 14px;
+}
+
+.select-station-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #303133;
+}
+
+.select-station-content {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+  color: #606266;
+  font-size: 13px;
+}
+
+.status-meaning-card {
+  margin-bottom: 16px;
+  border: 1px solid #e4ecf7;
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+}
+
+.status-meaning-header {
+  margin-bottom: 14px;
+}
+
+.status-meaning-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #303133;
+}
+
+.status-meaning-subtitle {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #606266;
+}
+
+.status-meaning-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.status-meaning-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  background: #f7faff;
+  border: 1px solid #e8eef8;
+  border-radius: 12px;
+}
+
+.status-meaning-text {
+  line-height: 1.6;
+  color: #606266;
+  font-size: 13px;
+}
+
+@media (max-width: 900px) {
+  .status-meaning-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

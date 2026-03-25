@@ -16,7 +16,7 @@
           <div class="metric-title">设备总数</div>
           <div class="metric-value">{{ summary.deviceCount }}</div>
           <div class="metric-sub">
-            运行中 {{ summary.runningDeviceCount }} / 停用 {{ summary.stopDeviceCount }}
+            在线 {{ summary.runningDeviceCount }} / 离线 {{ summary.stopDeviceCount }}
           </div>
         </el-card>
       </el-col>
@@ -35,10 +35,23 @@
         <el-card class="overview-card" shadow="hover">
           <div class="metric-title">系统状态</div>
           <div class="metric-value">{{ summary.onlineStationCount > 0 ? '正常' : '异常' }}</div>
-          <div class="metric-sub">站点在线数已按当前站点/设备状态校正</div>
+          <div class="metric-sub">任务状态看调度页；在线状态看最近采集数据是否超时</div>
         </el-card>
       </el-col>
     </el-row>
+
+    <el-card class="page-card status-meaning-card" shadow="never" style="margin-top: 16px;">
+      <div class="status-meaning-header">
+        <div class="status-meaning-title">状态口径统一说明</div>
+        <div class="status-meaning-subtitle">任务状态表示是否允许调度与上报；设备/站点在线状态表示最近是否收到有效采集数据。两者关联但不完全等价。</div>
+      </div>
+      <div class="status-meaning-inline">
+        <span class="meaning-chip"><i class="chip-dot green"></i>运行中：任务调度已开启</span>
+        <span class="meaning-chip"><i class="chip-dot gray"></i>未启动 / 已停止：任务不参与实时链路</span>
+        <span class="meaning-chip"><i class="chip-dot green"></i>在线：离线阈值内收到数据</span>
+        <span class="meaning-chip"><i class="chip-dot red"></i>离线：超过离线阈值未收到数据</span>
+      </div>
+    </el-card>
 
     <el-row :gutter="16" style="margin-top: 16px">
       <el-col :span="15">
@@ -48,9 +61,9 @@
               <span>站点地图态势</span>
               <div class="header-actions">
                 <div class="map-legend">
-                  <span><i class="legend-dot success"></i>全部运行</span>
+                  <span><i class="legend-dot success"></i>全部在线</span>
                   <span><i class="legend-dot warning"></i>混合状态</span>
-                  <span><i class="legend-dot danger"></i>全部停用</span>
+                  <span><i class="legend-dot danger"></i>全部离线</span>
                   <span><i class="legend-dot info"></i>暂无设备</span>
                 </div>
                 <el-button size="small" @click="loadOverviewData">刷新数据</el-button>
@@ -136,6 +149,11 @@ import {
   getStationListApi
 } from '../../api/overview'
 import { getAlarmPageApi } from '../../api/alarm'
+import {
+  deviceOnlineColor,
+  deviceOnlineText,
+  getStationDeviceOnlineMeta
+} from '../../utils/status'
 
 const loading = ref(false)
 
@@ -290,28 +308,7 @@ const recomputeStationSummary = () => {
   summary.offlineStationCount = Math.max(total - online, 0)
 }
 
-const getStationStatusMeta = (devices) => {
-  if (!devices || devices.length === 0) {
-    return { color: '#909399', text: '暂无设备', badge: '0' }
-  }
-
-  const running = devices.filter(item => item.runStatus === 1).length
-  const stop = devices.filter(item => item.runStatus === 0).length
-
-  if (running > 0 && stop === 0) {
-    return { color: '#67c23a', text: '全部运行', badge: `${devices.length}` }
-  }
-
-  if (running > 0 && stop > 0) {
-    return { color: '#e6a23c', text: '混合状态', badge: `${devices.length}` }
-  }
-
-  if (running === 0 && stop > 0) {
-    return { color: '#f56c6c', text: '全部停用', badge: `${devices.length}` }
-  }
-
-  return { color: '#909399', text: '暂无设备', badge: `${devices.length}` }
-}
+const getStationStatusMeta = (devices) => getStationDeviceOnlineMeta(devices)
 
 const buildMarkerHtml = (station, devices) => {
   const meta = getStationStatusMeta(devices)
@@ -361,13 +358,13 @@ const buildMarkerHtml = (station, devices) => {
 
 const buildPopupHtml = (station, devices) => {
   const total = devices.length
-  const running = devices.filter(item => item.runStatus === 1).length
-  const stop = devices.filter(item => item.runStatus === 0).length
+  const online = devices.filter(item => item.runStatus === 1).length
+  const offline = devices.filter(item => item.runStatus === 0).length
 
   const deviceHtml = devices.length > 0
     ? devices.map(item => {
-        const color = item.runStatus === 1 ? '#67c23a' : '#f56c6c'
-        const text = item.runStatus === 1 ? '运行中' : '停用'
+        const color = deviceOnlineColor(item.runStatus)
+        const text = deviceOnlineText(item.runStatus)
         return `
           <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding:8px 10px;background:#f7f9fc;border-radius:8px;">
             <span style="color:#303133;">${item.deviceName}</span>
@@ -383,7 +380,7 @@ const buildPopupHtml = (station, devices) => {
       <div style="margin-top:8px;color:#606266;">站点编码：${station.stationCode || '-'}</div>
       <div style="margin-top:4px;color:#606266;">位置：${station.locationText || '-'}</div>
       <div style="margin-top:4px;color:#606266;">设备总数：${total}</div>
-      <div style="margin-top:4px;color:#606266;">运行中：${running} / 停用：${stop}</div>
+      <div style="margin-top:4px;color:#606266;">在线：${online} / 离线：${offline}</div>
       <div style="margin-top:12px;font-weight:700;color:#303133;">设备明细</div>
       ${deviceHtml}
     </div>
@@ -425,105 +422,59 @@ const renderMap = async () => {
 
   validStations.forEach(station => {
     const devices = stationDeviceMap.get(station.id) || []
-
-    const marker = L.marker(
-      [Number(station.latitude), Number(station.longitude)],
-      { icon: createStationIcon(station, devices) }
-    )
+    const marker = L.marker([station.latitude, station.longitude], {
+      icon: createStationIcon(station, devices)
+    })
 
     marker.bindPopup(buildPopupHtml(station, devices), {
-      maxWidth: 340,
-      className: 'beauty-popup'
+      maxWidth: 340
     })
 
     marker.addTo(markerLayer)
   })
 
+  await nextTick()
+
   if (validStations.length > 0) {
-    const latlngs = validStations.map(item => [Number(item.latitude), Number(item.longitude)])
-    mapInstance.fitBounds(latlngs, { padding: [30, 30] })
-  }
-
-  setTimeout(() => {
-    mapInstance.invalidateSize()
-  }, 200)
-}
-
-const loadAlarmPage = async () => {
-  const res = await getAlarmPageApi({
-    current: alarmQuery.current,
-    size: alarmQuery.size
-  })
-
-  const data = res.data || {}
-  alarmPage.total = data.total || 0
-  alarmPage.records = data.records || []
-}
-
-const loadOverviewData = async () => {
-  try {
-    loading.value = true
-
-    const [summaryRes, stationRes, deviceRes] = await Promise.all([
-      getOverviewSummaryApi(),
-      getStationListApi(),
-      getDeviceListApi()
-    ])
-
-    Object.assign(summary, summaryRes.data || {})
-    stationList.value = stationRes.data || []
-    deviceList.value = deviceRes.data || []
-
-    recomputeStationSummary()
-
-    await loadAlarmPage()
-    await nextTick()
-    await renderMap()
-    renderChart()
-  } catch (error) {
-    console.error(error)
-  } finally {
-    loading.value = false
+    const bounds = L.latLngBounds(validStations.map(item => [item.latitude, item.longitude]))
+    mapInstance.fitBounds(bounds.pad(0.25))
   }
 }
 
-const renderChart = () => {
+const renderAlarmChart = async () => {
+  await nextTick()
   if (!chartRef.value) return
 
   if (!chartInstance) {
     chartInstance = echarts.init(chartRef.value)
   }
 
-  chartInstance.setOption({
+  const option = {
     tooltip: {
-      trigger: 'axis'
+      trigger: 'item'
     },
-    grid: {
-      left: 40,
-      right: 20,
-      top: 40,
-      bottom: 30
-    },
-    xAxis: {
-      type: 'category',
-      data: ['未处理', '已确认', '已处理']
-    },
-    yAxis: {
-      type: 'value',
-      minInterval: 1
+    legend: {
+      bottom: 0
     },
     series: [
       {
-        name: '告警数量',
-        type: 'bar',
+        name: '告警状态',
+        type: 'pie',
+        radius: ['46%', '72%'],
+        avoidLabelOverlap: false,
+        label: {
+          formatter: '{b}\n{c}'
+        },
         data: [
-          summary.unreadAlarmCount || 0,
-          summary.confirmedAlarmCount || 0,
-          summary.handledAlarmCount || 0
+          { value: summary.unreadAlarmCount, name: '未处理' },
+          { value: summary.confirmedAlarmCount, name: '已确认' },
+          { value: summary.handledAlarmCount, name: '已处理' }
         ]
       }
     ]
-  })
+  }
+
+  chartInstance.setOption(option)
 }
 
 const handleAlarmPageChange = async (page) => {
@@ -537,9 +488,73 @@ const handleAlarmSizeChange = async (size) => {
   await loadAlarmPage()
 }
 
+const loadAlarmPage = async () => {
+  const res = await getAlarmPageApi({
+    current: alarmQuery.current,
+    size: alarmQuery.size
+  })
+  const data = res.data || {}
+  alarmPage.total = data.total || 0
+  alarmPage.records = data.records || []
+}
+
+const loadOverviewSummary = async () => {
+  const res = await getOverviewSummaryApi()
+  const data = res.data || {}
+
+  summary.stationCount = data.stationCount || 0
+  summary.onlineStationCount = data.onlineStationCount || 0
+  summary.offlineStationCount = data.offlineStationCount || 0
+  summary.deviceCount = data.deviceCount || 0
+  summary.runningDeviceCount = data.runningDeviceCount || 0
+  summary.stopDeviceCount = data.stopDeviceCount || 0
+  summary.alarmCount = data.alarmCount || 0
+  summary.unreadAlarmCount = data.unreadAlarmCount || 0
+  summary.confirmedAlarmCount = data.confirmedAlarmCount || 0
+  summary.handledAlarmCount = data.handledAlarmCount || 0
+}
+
+const loadStationList = async () => {
+  const res = await getStationListApi()
+  stationList.value = res.data || []
+}
+
+const loadDeviceList = async () => {
+  const res = await getDeviceListApi()
+  deviceList.value = res.data || []
+
+  summary.deviceCount = deviceList.value.length
+  summary.runningDeviceCount = deviceList.value.filter(item => item.runStatus === 1).length
+  summary.stopDeviceCount = deviceList.value.filter(item => item.runStatus === 0).length
+}
+
+const loadOverviewData = async () => {
+  try {
+    loading.value = true
+    await Promise.all([
+      loadOverviewSummary(),
+      loadStationList(),
+      loadDeviceList(),
+      loadAlarmPage()
+    ])
+
+    recomputeStationSummary()
+    await renderMap()
+    await renderAlarmChart()
+  } catch (error) {
+    console.error(error)
+  } finally {
+    loading.value = false
+  }
+}
+
 const handleResize = () => {
-  if (chartInstance) chartInstance.resize()
-  if (mapInstance) mapInstance.invalidateSize()
+  if (mapInstance) {
+    mapInstance.invalidateSize()
+  }
+  if (chartInstance) {
+    chartInstance.resize()
+  }
 }
 
 onMounted(async () => {
@@ -549,20 +564,57 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
-
-  if (chartInstance) {
-    chartInstance.dispose()
-    chartInstance = null
-  }
-
   if (mapInstance) {
     mapInstance.remove()
     mapInstance = null
+  }
+  if (chartInstance) {
+    chartInstance.dispose()
+    chartInstance = null
   }
 })
 </script>
 
 <style scoped>
+.page-container {
+  min-height: calc(100vh - 112px);
+}
+
+.overview-card {
+  border-radius: 18px;
+  background: linear-gradient(135deg, #409eff, #67c6ff);
+  color: #ffffff;
+}
+
+.metric-title {
+  font-size: 14px;
+  opacity: 0.92;
+}
+
+.metric-value {
+  margin-top: 12px;
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.metric-sub {
+  margin-top: 12px;
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+.page-card {
+  border-radius: 18px;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .header-actions {
   display: flex;
   align-items: center;
@@ -573,9 +625,8 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 14px;
+  font-size: 13px;
   color: #606266;
-  font-size: 12px;
-  flex-wrap: wrap;
 }
 
 .legend-dot {
@@ -600,5 +651,81 @@ onUnmounted(() => {
 
 .legend-dot.info {
   background: #909399;
+}
+
+.map-box {
+  width: 100%;
+  height: 420px;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.chart-box {
+  width: 100%;
+  height: 420px;
+}
+
+.pagination-wrap {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.status-meaning-card {
+  border: 1px solid #e4ecf7;
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+}
+
+.status-meaning-header {
+  margin-bottom: 12px;
+}
+
+.status-meaning-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #303133;
+}
+
+.status-meaning-subtitle {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #606266;
+}
+
+.status-meaning-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.meaning-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 999px;
+  background: #f7faff;
+  border: 1px solid #e8eef8;
+  color: #606266;
+  font-size: 13px;
+}
+
+.chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.chip-dot.green {
+  background: #67c23a;
+}
+
+.chip-dot.gray {
+  background: #909399;
+}
+
+.chip-dot.red {
+  background: #f56c6c;
 }
 </style>
