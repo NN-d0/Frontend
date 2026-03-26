@@ -1,3 +1,4 @@
+import axios from 'axios'
 import { createRouter, createWebHashHistory } from 'vue-router'
 import LoginView from '../views/login/LoginView.vue'
 import LayoutView from '../views/layout/LayoutView.vue'
@@ -9,6 +10,14 @@ import TaskScheduleView from '../views/task/TaskScheduleView.vue'
 import SystemSettingsView from '../views/system/SystemSettingsView.vue'
 import HistoryReplayView from '../views/history/HistoryReplayView.vue'
 import RealtimeSpectrumView from '../views/realtime/RealtimeSpectrumView.vue'
+import {
+  clearAuthState,
+  getToken,
+  goHome,
+  hasUsableToken,
+  isTokenValidated,
+  markTokenValidated
+} from '../utils/auth'
 
 const routes = [
   {
@@ -116,14 +125,64 @@ const router = createRouter({
   routes
 })
 
-router.beforeEach((to, from, next) => {
-  const token = localStorage.getItem('radio_token')
+const authValidator = axios.create({
+  baseURL: '/api',
+  timeout: 8000
+})
 
+async function validateTokenOnce() {
+  const token = getToken()
+
+  if (!hasUsableToken()) {
+    return false
+  }
+
+  if (isTokenValidated(token)) {
+    return true
+  }
+
+  try {
+    await authValidator.get('/system/auth/me', {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    })
+    markTokenValidated(token)
+    return true
+  } catch (error) {
+    clearAuthState()
+    return false
+  }
+}
+
+router.beforeEach(async (to, from, next) => {
   document.title = `${to.meta?.title || '无线电频谱智能监测系统'} - 无线电频谱智能监测系统`
 
-  if (to.meta?.requiresAuth && !token) {
-    next('/login')
+  if (to.path === '/login') {
+    if (hasUsableToken()) {
+      const valid = await validateTokenOnce()
+      if (valid) {
+        goHome()
+        next('/overview')
+        return
+      }
+    }
+    next()
     return
+  }
+
+  if (to.meta?.requiresAuth) {
+    if (!hasUsableToken()) {
+      clearAuthState()
+      next('/login')
+      return
+    }
+
+    const valid = await validateTokenOnce()
+    if (!valid) {
+      next('/login')
+      return
+    }
   }
 
   next()

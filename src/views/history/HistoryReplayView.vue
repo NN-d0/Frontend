@@ -142,6 +142,19 @@
                     <el-tag type="primary" effect="plain">{{ scope.row.signalType }}</el-tag>
                   </template>
                 </el-table-column>
+                <el-table-column label="推理模式" min-width="150">
+                  <template #default="scope">
+                    <div>{{ formatAiMode(scope.row.aiActualMode) }}</div>
+                    <div class="table-sub-text">请求 {{ formatAiMode(scope.row.aiRequestMode) }}</div>
+                  </template>
+                </el-table-column>
+                <el-table-column label="Fallback" width="100">
+                  <template #default="scope">
+                    <el-tag :type="normalizeFallbackFlag(scope.row.aiFallbackUsed) === 1 ? 'danger' : 'success'">
+                      {{ normalizeFallbackFlag(scope.row.aiFallbackUsed) === 1 ? '是' : '否' }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
                 <el-table-column prop="centerFreqMhz" label="中心频率(MHz)" min-width="130" />
                 <el-table-column prop="peakPowerDbm" label="峰值功率(dBm)" min-width="130" />
                 <el-table-column prop="snrDb" label="SNR(dB)" min-width="100" />
@@ -253,6 +266,21 @@
             <el-descriptions-item label="带宽">{{ selectedHistory.bandwidthKhz || '-' }} kHz</el-descriptions-item>
             <el-descriptions-item label="信道模型">{{ selectedHistory.channelModel || '-' }}</el-descriptions-item>
             <el-descriptions-item label="AI识别">{{ selectedHistory.aiLabel || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="请求模式">
+              <el-tag type="info" effect="plain">{{ formatAiMode(selectedHistory.aiRequestMode) }}</el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="实际推理">
+              <el-tag :type="formatAiMode(selectedHistory.aiActualMode) === 'CNN' ? 'primary' : 'success'">
+                {{ formatAiMode(selectedHistory.aiActualMode) }}
+              </el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="Fallback">
+              <el-tag :type="normalizeFallbackFlag(selectedHistory.aiFallbackUsed) === 1 ? 'danger' : 'success'">
+                {{ normalizeFallbackFlag(selectedHistory.aiFallbackUsed) === 1 ? '已发生' : '未发生' }}
+              </el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="实际模型">{{ selectedHistory.aiModelName || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="AI说明" :span="2">{{ selectedHistory.aiReason || '-' }}</el-descriptions-item>
             <el-descriptions-item label="峰值功率">{{ selectedHistory.peakPowerDbm || '-' }} dBm</el-descriptions-item>
             <el-descriptions-item label="SNR">{{ selectedHistory.snrDb || '-' }} dB</el-descriptions-item>
             <el-descriptions-item label="占用带宽">{{ selectedHistory.occupiedBandwidthKhz || '-' }} kHz</el-descriptions-item>
@@ -304,6 +332,17 @@ const alarmSnapshotCount = computed(() => pageState.records.filter(item => item.
 const formatTime = (value) => {
   if (!value) return '-'
   return String(value).replace('T', ' ')
+}
+
+const formatAiMode = (value) => {
+  const mode = String(value || '').trim().toUpperCase()
+  if (mode === 'AI') return 'CNN'
+  if (mode === 'RULE' || mode === 'CNN' || mode === 'AUTO') return mode
+  return '-'
+}
+
+const normalizeFallbackFlag = (value) => {
+  return Number(value || 0) === 1 ? 1 : 0
 }
 
 const sortFramesByTime = (list) => {
@@ -602,7 +641,12 @@ const loadPage = async () => {
     const data = res.data || {}
 
     pageState.total = data.total || 0
-    pageState.records = data.records || []
+    pageState.records = (data.records || []).map(item => ({
+      ...item,
+      aiRequestMode: formatAiMode(item.aiRequestMode),
+      aiActualMode: formatAiMode(item.aiActualMode),
+      aiFallbackUsed: normalizeFallbackFlag(item.aiFallbackUsed)
+    }))
   } catch (error) {
     console.error(error)
     ElMessage.error(error?.message || '历史列表加载失败')

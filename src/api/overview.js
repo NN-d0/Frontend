@@ -107,3 +107,13 @@ export function getRealtimeLatestApi(params) {
     params
   })
 }
+
+/**
+ * AI 健康状态
+ */
+export function getAiHealthApi() {
+  return request({
+    url: '/core/configs/ai-health',
+    method: 'get'
+  })
+}

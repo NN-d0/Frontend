@@ -124,8 +124,8 @@
         <el-table-column prop="sampleRateKhz" label="采样率(kHz)" min-width="120" />
         <el-table-column prop="algorithmMode" label="算法模式" width="110">
           <template #default="scope">
-            <el-tag :type="scope.row.algorithmMode === 'AI' ? 'primary' : 'info'">
-              {{ scope.row.algorithmMode }}
+            <el-tag :type="algorithmModeTag(scope.row.algorithmMode)">
+              {{ formatAlgorithmMode(scope.row.algorithmMode) }}
             </el-tag>
           </template>
         </el-table-column>
@@ -226,7 +226,7 @@
             <el-form-item label="算法模式" prop="algorithmMode">
               <el-radio-group v-model="form.algorithmMode">
                 <el-radio-button value="RULE">RULE</el-radio-button>
-                <el-radio-button value="AI">AI</el-radio-button>
+                <el-radio-button value="CNN">CNN</el-radio-button>
               </el-radio-group>
             </el-form-item>
           </el-col>
@@ -456,6 +456,20 @@ const latestLog = computed(() => {
   return logPage.records.length > 0 ? logPage.records[0] : null
 })
 
+const normalizeAlgorithmMode = (value) => {
+  const mode = String(value || 'RULE').trim().toUpperCase()
+  if (mode === 'AI') {
+    return 'CNN'
+  }
+  return mode === 'CNN' ? 'CNN' : 'RULE'
+}
+
+const formatAlgorithmMode = (value) => normalizeAlgorithmMode(value)
+
+const algorithmModeTag = (value) => {
+  return normalizeAlgorithmMode(value) === 'CNN' ? 'primary' : 'info'
+}
+
 const formatTime = (value) => {
   if (!value) return '-'
   return String(value).replace('T', ' ')
@@ -502,7 +516,10 @@ const loadPage = async () => {
 
     const data = res.data || {}
     pageState.total = data.total || 0
-    pageState.records = data.records || []
+    pageState.records = (data.records || []).map(item => ({
+      ...item,
+      algorithmMode: normalizeAlgorithmMode(item.algorithmMode)
+    }))
   } catch (error) {
     console.error(error)
     ElMessage.error(error?.message || '任务列表加载失败')
@@ -598,7 +615,7 @@ const openEditDialog = async (row) => {
   form.freqStartMhz = Number(row.freqStartMhz || 87.0)
   form.freqEndMhz = Number(row.freqEndMhz || 108.0)
   form.sampleRateKhz = Number(row.sampleRateKhz || 200.0)
-  form.algorithmMode = row.algorithmMode || 'RULE'
+  form.algorithmMode = normalizeAlgorithmMode(row.algorithmMode)
   form.taskStatus = row.taskStatus ?? 0
   form.cronExpr = row.cronExpr || '0/5 * * * * ?'
   dialogVisible.value = true
@@ -661,7 +678,7 @@ const handleSubmit = async () => {
     freqStartMhz: form.freqStartMhz,
     freqEndMhz: form.freqEndMhz,
     sampleRateKhz: form.sampleRateKhz,
-    algorithmMode: form.algorithmMode,
+    algorithmMode: normalizeAlgorithmMode(form.algorithmMode),
     taskStatus: form.taskStatus,
     cronExpr: form.cronExpr.trim()
   }
