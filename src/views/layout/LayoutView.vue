@@ -64,21 +64,8 @@
     </el-aside>
 
     <el-container class="layout-main-wrap">
-      <div v-if="isOverviewPage" class="overview-system-bar">
-        <div class="overview-system-head">
-          <div class="overview-system-icon">
-            <el-icon><Monitor /></el-icon>
-          </div>
-          <div class="overview-system-copy">
-            <div class="overview-system-kicker">INTELLIGENT SPECTRUM MONITORING</div>
-            <div class="overview-system-title">智能频谱监测系统</div>
-            <div class="overview-system-subtitle">智能感知 · 实时预警 · 态势联动</div>
-          </div>
-        </div>
-        <div class="overview-system-tag">OVERVIEW</div>
-      </div>
 
-      <el-header class="layout-header" :class="{ 'layout-header--with-system-title': isOverviewPage }">
+      <el-header class="layout-header">
         <div class="header-left">
           <div class="page-title">{{ pageTitle }}</div>
           <div class="page-subtitle">无线电频谱智能监测系统</div>
@@ -306,7 +293,6 @@ const passwordRules = {
 }
 
 const pageTitle = computed(() => route.meta?.title || '无线电频谱智能监测系统')
-const isOverviewPage = computed(() => route.path === '/overview')
 
 const profileInitial = computed(() => {
   const text = profile.nickName || profile.username || '管'
@@ -633,93 +619,6 @@ body,
   box-shadow: 0 0 12px rgba(59, 130, 246, 0.45);
 }
 
-.overview-system-bar {
-  height: 200px;
-  margin: 14px 18px 0;
-  padding: 0 24px;
-  border-radius: 24px;
-  background:
-    linear-gradient(135deg, rgba(9, 28, 54, 0.98) 0%, rgba(18, 57, 110, 0.94) 52%, rgba(38, 106, 205, 0.9) 100%);
-  border: 1px solid rgba(126, 174, 255, 0.2);
-  box-shadow: 0 18px 36px rgba(15, 45, 92, 0.2);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  overflow: hidden;
-  position: relative;
-}
-
-.overview-system-bar::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(circle at left center, rgba(255, 255, 255, 0.16), transparent 28%),
-    radial-gradient(circle at right top, rgba(255, 255, 255, 0.14), transparent 22%);
-  pointer-events: none;
-}
-
-.overview-system-head {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.overview-system-icon {
-  width: 52px;
-  height: 52px;
-  border-radius: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #ffffff;
-  font-size: 24px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.12));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
-}
-
-.overview-system-copy {
-  display: flex;
-  flex-direction: column;
-}
-
-.overview-system-kicker {
-  font-size: 11px;
-  line-height: 1;
-  letter-spacing: 1.8px;
-  color: rgba(221, 234, 255, 0.78);
-}
-
-.overview-system-title {
-  margin-top: 7px;
-  font-size: 30px;
-  line-height: 1;
-  font-weight: 800;
-  color: #ffffff;
-  letter-spacing: 0.8px;
-}
-
-.overview-system-subtitle {
-  margin-top: 8px;
-  font-size: 13px;
-  color: rgba(230, 239, 255, 0.82);
-}
-
-.overview-system-tag {
-  position: relative;
-  z-index: 1;
-  padding: 10px 14px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 1px;
-}
-
 .layout-header {
   height: 78px;
   margin: 14px 18px 0;
@@ -732,10 +631,6 @@ body,
   display: flex;
   align-items: center;
   justify-content: space-between;
-}
-
-.layout-header--with-system-title {
-  margin-top: 12px;
 }
 
 .header-left {

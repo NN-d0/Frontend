@@ -8,6 +8,29 @@ export function createStationApi(data) {
   })
 }
 
+export function updateStationApi(data) {
+  return request({
+    url: '/core/stations/update',
+    method: 'put',
+    data
+  })
+}
+
+export function changeStationStatusApi(data) {
+  return request({
+    url: '/core/stations/change-status',
+    method: 'put',
+    data
+  })
+}
+
+export function deleteStationApi(id) {
+  return request({
+    url: `/core/stations/delete/${id}`,
+    method: 'delete'
+  })
+}
+
 export function getDevicePageApi(params) {
   return request({
     url: '/core/devices/page',
@@ -27,6 +50,22 @@ export function createDeviceApi(data) {
 export function updateDeviceApi(data) {
   return request({
     url: '/core/devices/update',
+    method: 'put',
+    data
+  })
+}
+
+export function changeDeviceStatusApi(data) {
+  return request({
+    url: '/core/devices/change-status',
+    method: 'put',
+    data
+  })
+}
+
+export function batchChangeDeviceStatusApi(data) {
+  return request({
+    url: '/core/devices/change-status/batch',
     method: 'put',
     data
   })

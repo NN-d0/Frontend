@@ -307,6 +307,16 @@ const alarmLevelTag = (level) => {
   return map[level] || 'info'
 }
 
+const emitAlarmStatusChanged = (alarm) => {
+  if (!alarm || !alarm.id) return
+
+  window.dispatchEvent(new CustomEvent('radio-alarm-status-changed', {
+    detail: {
+      alarm: { ...alarm }
+    }
+  }))
+}
+
 const loadStationOptions = async () => {
   try {
     const res = await getStationListApi()
@@ -392,11 +402,19 @@ const handleConfirm = async (row) => {
     ElMessage.success('告警已确认')
     await loadPage()
 
+    const updatedAlarm = pageState.records.find(item => String(item.id) === String(row.id))
+    if (updatedAlarm) {
+      emitAlarmStatusChanged(updatedAlarm)
+    }
+
     if (currentAlarm.value && currentAlarm.value.id === row.id) {
-      currentAlarm.value = {
-        ...currentAlarm.value,
-        alarmStatus: 1
-      }
+      currentAlarm.value = updatedAlarm
+        ? { ...updatedAlarm }
+        : {
+            ...currentAlarm.value,
+            alarmStatus: 1,
+            confirmTime: new Date().toISOString().slice(0, 19).replace('T', ' ')
+          }
     }
   } catch (error) {
     if (error === 'cancel' || error === 'close') return
@@ -435,12 +453,20 @@ const submitHandle = async () => {
     handleDialogVisible.value = false
     await loadPage()
 
+    const updatedAlarm = pageState.records.find(item => String(item.id) === String(handleForm.alarmId))
+    if (updatedAlarm) {
+      emitAlarmStatusChanged(updatedAlarm)
+    }
+
     if (currentAlarm.value && currentAlarm.value.id === handleForm.alarmId) {
-      currentAlarm.value = {
-        ...currentAlarm.value,
-        alarmStatus: 2,
-        handleNote: handleForm.handleNote
-      }
+      currentAlarm.value = updatedAlarm
+        ? { ...updatedAlarm }
+        : {
+            ...currentAlarm.value,
+            alarmStatus: 2,
+            handleNote: handleForm.handleNote,
+            handleTime: new Date().toISOString().slice(0, 19).replace('T', ' ')
+          }
     }
   } catch (error) {
     console.error(error)

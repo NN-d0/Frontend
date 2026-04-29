@@ -515,15 +515,53 @@ const handleResize = () => {
   }
 }
 
+const applyAlarmRealtimeUpdate = (alarmPatch) => {
+  if (!alarmPatch || !alarmPatch.id) return
+
+  const targetId = String(alarmPatch.id)
+
+  pageState.records = pageState.records.map(item =>
+    String(item.id) === targetId
+      ? { ...item, ...alarmPatch }
+      : item
+  )
+
+  if (selectedPoint.value && String(selectedPoint.value.id) === targetId) {
+    selectedPoint.value = {
+      ...selectedPoint.value,
+      ...alarmPatch
+    }
+  }
+
+  const markerEntry = markerMap.get(targetId)
+  if (markerEntry) {
+    const nextItem = {
+      ...markerEntry.item,
+      ...alarmPatch
+    }
+    markerEntry.item = nextItem
+    markerEntry.marker.setIcon(buildIcon(nextItem, selectedPoint.value && String(selectedPoint.value.id) === targetId))
+    markerEntry.marker.setPopupContent(buildPopupHtml(nextItem))
+  }
+}
+
+const handleAlarmStatusChanged = (event) => {
+  const alarmPatch = event?.detail?.alarm
+  if (!alarmPatch) return
+  applyAlarmRealtimeUpdate(alarmPatch)
+}
+
 onMounted(async () => {
   await nextTick()
   initMap()
   await loadData()
   window.addEventListener('resize', handleResize)
+  window.addEventListener('radio-alarm-status-changed', handleAlarmStatusChanged)
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
+  window.removeEventListener('radio-alarm-status-changed', handleAlarmStatusChanged)
 
   if (mapInstance) {
     mapInstance.remove()

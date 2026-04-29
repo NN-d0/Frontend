@@ -37,7 +37,7 @@
     <el-card class="page-card status-meaning-card" shadow="never">
       <div class="status-meaning-header">
         <div class="status-meaning-title">状态口径说明</div>
-        <div class="status-meaning-subtitle">任务状态表示“业务调度是否开启”；设备/站点是否在线要以最近采集数据是否超时为准。</div>
+        <div class="status-meaning-subtitle">任务状态表示“业务调度是否开启”；启动/停止任务会同步联动设备状态，设备最终在线展示仍以最近采集数据和运行任务为准。</div>
       </div>
       <div class="status-meaning-grid">
         <div v-for="item in taskStatusTips" :key="item.value" class="status-meaning-item">
@@ -52,7 +52,7 @@
         <div class="card-header">
           <div>
             <div class="header-title">任务查询</div>
-            <div class="header-subtitle">支持任务新增、启动、停止、日志查看；在线状态请在设备页查看</div>
+            <div class="header-subtitle">支持任务新增、启动、停止、日志查看；任务启动/停止后会联动设备状态与设备页按钮禁用关系</div>
           </div>
           <div class="header-actions">
             <el-button type="primary" @click="openCreateDialog">新增任务</el-button>
@@ -105,7 +105,7 @@
         <div class="card-header">
           <div>
             <div class="header-title">任务列表</div>
-            <div class="header-subtitle">运行中表示允许上报数据，不等同于设备当前在线</div>
+            <div class="header-subtitle">运行中表示允许上报数据；任务启动/停止会自动联动设备开启/停止</div>
           </div>
           <el-tag type="info">共 {{ pageState.total }} 条</el-tag>
         </div>
@@ -116,6 +116,21 @@
         <el-table-column prop="taskName" label="任务名称" min-width="180" />
         <el-table-column prop="stationName" label="站点名称" min-width="140" />
         <el-table-column prop="deviceName" label="设备名称" min-width="180" />
+        <el-table-column label="设备状态" width="110">
+          <template #default="scope">
+            <el-tag :type="deviceRunStatusTag(scope.row.deviceRunStatus)">
+              {{ deviceRunStatusText(scope.row.deviceRunStatus) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="联动说明" min-width="260">
+          <template #default="scope">
+            <div class="linkage-cell">
+              <div class="linkage-main">{{ scope.row.linkageHint || '-' }}</div>
+              <div class="linkage-sub">关联运行任务：{{ scope.row.deviceRunningTaskCount ?? 0 }}</div>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column label="频率范围(MHz)" min-width="200">
           <template #default="scope">
             <span class="range-text">{{ scope.row.freqStartMhz }} ~ {{ scope.row.freqEndMhz }}</span>
@@ -227,6 +242,7 @@
               <el-radio-group v-model="form.algorithmMode">
                 <el-radio-button value="RULE">RULE</el-radio-button>
                 <el-radio-button value="CNN">CNN</el-radio-button>
+                <el-radio-button value="AUTO">AUTO</el-radio-button>
               </el-radio-group>
             </el-form-item>
           </el-col>
@@ -361,7 +377,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getDeviceListApi, getStationListApi } from '../../api/overview'
 import {
@@ -412,7 +428,7 @@ const form = reactive({
   freqStartMhz: 87.0,
   freqEndMhz: 108.0,
   sampleRateKhz: 200.0,
-  algorithmMode: 'RULE',
+  algorithmMode: 'AUTO',
   taskStatus: 0,
   cronExpr: '0/5 * * * * ?'
 })
@@ -457,17 +473,35 @@ const latestLog = computed(() => {
 })
 
 const normalizeAlgorithmMode = (value) => {
-  const mode = String(value || 'RULE').trim().toUpperCase()
+  const mode = String(value || 'AUTO').trim().toUpperCase()
   if (mode === 'AI') {
     return 'CNN'
   }
-  return mode === 'CNN' ? 'CNN' : 'RULE'
+  if (mode === 'CNN' || mode === 'RULE' || mode === 'AUTO') {
+    return mode
+  }
+  return 'AUTO'
 }
 
 const formatAlgorithmMode = (value) => normalizeAlgorithmMode(value)
 
 const algorithmModeTag = (value) => {
-  return normalizeAlgorithmMode(value) === 'CNN' ? 'primary' : 'info'
+  const mode = normalizeAlgorithmMode(value)
+  if (mode === 'CNN') {
+    return 'primary'
+  }
+  if (mode === 'AUTO') {
+    return 'success'
+  }
+  return 'info'
+}
+
+const deviceRunStatusText = (status) => {
+  return Number(status) === 1 ? '开启' : '停止'
+}
+
+const deviceRunStatusTag = (status) => {
+  return Number(status) === 1 ? 'success' : 'danger'
 }
 
 const formatTime = (value) => {
@@ -501,6 +535,14 @@ const loadStations = async () => {
 const loadDevices = async () => {
   const res = await getDeviceListApi()
   deviceOptions.value = res.data || []
+}
+
+const reloadTaskRelatedData = async () => {
+  await Promise.all([loadStations(), loadDevices(), loadPage()])
+}
+
+const handleStationDeviceChanged = async () => {
+  await reloadTaskRelatedData()
 }
 
 const loadPage = async () => {
@@ -589,7 +631,7 @@ const resetForm = () => {
   form.freqStartMhz = 87.0
   form.freqEndMhz = 108.0
   form.sampleRateKhz = 200.0
-  form.algorithmMode = 'RULE'
+  form.algorithmMode = 'AUTO'
   form.taskStatus = 0
   form.cronExpr = '0/5 * * * * ?'
 }
@@ -696,7 +738,7 @@ const handleSubmit = async () => {
 
     dialogVisible.value = false
     formRef.value?.clearValidate?.()
-    await loadPage()
+    await reloadTaskRelatedData()
   } catch (error) {
     console.error(error)
     ElMessage.error(error?.message || '任务保存失败')
@@ -718,13 +760,46 @@ const handleDelete = async (row) => {
       queryForm.current -= 1
     }
 
-    await loadPage()
+    await reloadTaskRelatedData()
   } catch (error) {
     if (error !== 'cancel') {
       console.error(error)
       ElMessage.error(error?.message || '任务删除失败')
     }
   }
+}
+
+const emitTaskDeviceLinkageChanged = (action, row) => {
+  const payload = {
+    action,
+    taskId: row?.id || null,
+    deviceId: row?.deviceId || null,
+    stationId: row?.stationId || null,
+    at: Date.now()
+  }
+
+  try {
+    localStorage.setItem('taskDeviceLinkageChangedAt', String(payload.at))
+    localStorage.setItem('taskDeviceLinkageChangedPayload', JSON.stringify(payload))
+  } catch (error) {
+    console.warn('写入任务设备联动事件失败', error)
+  }
+
+  window.dispatchEvent(new CustomEvent('task-device-linkage-changed', { detail: payload }))
+}
+
+
+const emitRuntimeLinkageEvent = (type, row) => {
+  window.dispatchEvent(new CustomEvent('radio-task-status-changed', {
+    detail: {
+      type,
+      taskId: row?.id || null,
+      taskName: row?.taskName || '',
+      stationId: row?.stationId || null,
+      deviceId: row?.deviceId || null,
+      at: Date.now()
+    }
+  }))
 }
 
 const handleStart = async (row) => {
@@ -734,8 +809,9 @@ const handleStart = async (row) => {
     })
 
     await startTaskApi(row.id)
-    ElMessage.success('任务已启动')
-    await loadPage()
+    ElMessage.success('任务已启动，设备状态已联动刷新')
+    emitTaskDeviceLinkageChanged('start', row)
+    await reloadTaskRelatedData()
   } catch (error) {
     if (error !== 'cancel') {
       console.error(error)
@@ -751,8 +827,9 @@ const handleStop = async (row) => {
     })
 
     await stopTaskApi(row.id)
-    ElMessage.success('任务已停止')
-    await loadPage()
+    ElMessage.success('任务已停止，设备状态已联动刷新')
+    emitTaskDeviceLinkageChanged('stop', row)
+    await reloadTaskRelatedData()
   } catch (error) {
     if (error !== 'cancel') {
       console.error(error)
@@ -782,7 +859,12 @@ const handleLogSizeChange = async (size) => {
 }
 
 onMounted(async () => {
-  await Promise.all([loadStations(), loadDevices(), loadPage()])
+  await reloadTaskRelatedData()
+  window.addEventListener('radio-station-device-changed', handleStationDeviceChanged)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('radio-station-device-changed', handleStationDeviceChanged)
 })
 </script>
 
@@ -988,5 +1070,20 @@ onMounted(async () => {
   .status-meaning-grid {
     grid-template-columns: 1fr;
   }
+}
+
+
+.linkage-cell {
+  line-height: 1.7;
+}
+
+.linkage-main {
+  color: #1f2a37;
+  font-size: 13px;
+}
+
+.linkage-sub {
+  color: #8a97ab;
+  font-size: 12px;
 }
 </style>

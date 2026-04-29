@@ -4,30 +4,30 @@
       <el-col :span="6">
         <el-card class="metric-card metric-blue" shadow="hover">
           <div class="metric-label">当前站点</div>
-          <div class="metric-value ellipsis">{{ currentStationName || '-' }}</div>
+          <div class="metric-value ellipsis">{{ currentStationName || '未选择' }}</div>
           <div class="metric-desc">当前实时监测所在站点</div>
         </el-card>
       </el-col>
 
       <el-col :span="6">
         <el-card class="metric-card metric-cyan" shadow="hover">
-          <div class="metric-label">信号制式</div>
-          <div class="metric-value">{{ latestSnapshot.signalType || '-' }}</div>
-          <div class="metric-desc">最近一帧识别结果</div>
+          <div class="metric-label">运行中任务</div>
+          <div class="metric-value">{{ monitorState.activeTaskCount || 0 }}</div>
+          <div class="metric-desc">{{ monitorState.taskName || '暂无运行任务' }}</div>
         </el-card>
       </el-col>
 
       <el-col :span="6">
         <el-card class="metric-card metric-green" shadow="hover">
-          <div class="metric-label">峰值功率</div>
-          <div class="metric-value">{{ formatNumber(latestSnapshot.peakPowerDbm) }}</div>
-          <div class="metric-desc">单位 dBm</div>
+          <div class="metric-label">最新数据延迟</div>
+          <div class="metric-value">{{ freshnessDelayText }}</div>
+          <div class="metric-desc">{{ freshnessText }}</div>
         </el-card>
       </el-col>
 
       <el-col :span="6">
         <el-card class="metric-card metric-orange" shadow="hover">
-          <div class="metric-label">连接状态</div>
+          <div class="metric-label">实时链路状态</div>
           <div class="metric-value">{{ connectionStatusText }}</div>
           <div class="metric-desc">{{ connectionStatusDesc }}</div>
         </el-card>
@@ -39,10 +39,10 @@
         <div class="card-header">
           <div>
             <div class="header-title">实时监测参数</div>
-            <div class="header-subtitle">WebSocket 优先推送，断开后自动重连，并使用轮询兜底</div>
+            <div class="header-subtitle">任务未启动、等待首帧数据、数据延迟、实时监测中四种状态会明确区分</div>
           </div>
           <div class="header-actions">
-            <el-tag :type="connectionTagType">{{ connectionStatusText }}</el-tag>
+            <el-tag :type="statusBannerTagType">{{ statusBannerTagText }}</el-tag>
             <el-button @click="manualRefresh">手动刷新</el-button>
           </div>
         </div>
@@ -81,167 +81,134 @@
       </el-form>
 
       <div v-if="networkErrorMessage" class="network-tip">
-        当前网络或代理连接有波动：{{ networkErrorMessage }}。系统会自动重试，你也可以点击“手动刷新”。
+        当前网络或代理连接有波动：{{ networkErrorMessage }}。系统会自动重试，并使用轮询兜底。
+      </div>
+
+      <div class="status-banner" :class="`banner-${bannerClass}`">
+        <div class="status-banner-title">{{ monitorState.monitorMessage || '请先选择监测站点' }}</div>
+        <div class="status-banner-desc">{{ monitorState.monitorHint || '当前页面会根据任务状态、设备状态和数据新鲜度自动给出提示。' }}</div>
+        <div class="status-chip-group">
+          <el-tag effect="plain" :type="monitorState.deviceRunStatus === 1 ? 'success' : 'info'">
+            设备状态：{{ monitorState.deviceRunStatus === 1 ? '开启' : '停止' }}
+          </el-tag>
+          <el-tag effect="plain" :type="monitorState.stationOnlineStatus === 1 ? 'success' : 'danger'">
+            站点状态：{{ monitorState.stationOnlineStatus === 1 ? '在线' : '离线' }}
+          </el-tag>
+          <el-tag effect="plain" :type="freshnessTagType">
+            数据新鲜度：{{ freshnessText }}
+          </el-tag>
+        </div>
       </div>
     </el-card>
 
     <el-row :gutter="16" class="monitor-content-row">
-      <el-col :span="17" class="equal-height-col">
-        <el-card class="page-card spectrum-card equal-height-card" shadow="hover">
+      <el-col :span="16" class="equal-height-col">
+        <el-card class="page-card equal-height-card" shadow="hover">
           <template #header>
-            <div class="card-header chart-header">
+            <div class="card-header">
               <div>
                 <div class="header-title">无线电频谱实时监测曲线</div>
-                <div class="header-subtitle">主线 + 柔和包络线 + 峰值呼吸点，实时更新更顺滑</div>
+                <div class="header-subtitle">{{ chartSubtitle }}</div>
               </div>
-
-              <div class="chart-top-stats">
-                <div class="stat-pill">
-                  <span class="stat-pill-label">采样点数</span>
-                  <span class="stat-pill-value">{{ statPointCount }}</span>
-                </div>
-                <div class="stat-pill">
-                  <span class="stat-pill-label">平均功率</span>
-                  <span class="stat-pill-value">{{ statAvgPowerText }}</span>
-                </div>
-                <div class="stat-pill">
-                  <span class="stat-pill-label">峰值点位</span>
-                  <span class="stat-pill-value">{{ statPeakPointText }}</span>
-                </div>
+              <div class="header-actions">
+                <el-tag effect="plain">{{ currentStationName || '未选择站点' }}</el-tag>
+                <el-tag effect="plain" type="success">{{ monitorState.taskName || '未绑定任务' }}</el-tag>
+                <el-tag effect="plain" type="info">{{ formatTime(monitorState.captureTime) }}</el-tag>
               </div>
             </div>
           </template>
 
-          <div class="chart-toolbar">
-            <div class="toolbar-left">
-              <el-tag effect="plain">{{ currentStationName || '未选择站点' }}</el-tag>
-              <el-tag effect="plain" type="success">{{ latestSnapshot.taskName || '未绑定任务' }}</el-tag>
-              <el-tag effect="plain" type="info">{{ formatTime(latestSnapshot.captureTime) }}</el-tag>
-              <el-tag :type="signalQualityTagType">{{ signalQualityText }}</el-tag>
-            </div>
+          <div class="chart-panel">
+            <div v-show="monitorState.monitorReady === 1" ref="lineChartRef" class="chart-box"></div>
 
-            <div class="toolbar-right">
-              <el-switch
-                v-model="enableCurveSmoothing"
-                inline-prompt
-                active-text="平滑"
-                inactive-text="直线"
-                @change="renderLineChart"
-              />
-              <el-select v-model="transitionDuration" style="width: 130px" @change="applyTransitionDuration">
-                <el-option :value="220" label="过渡 0.22s" />
-                <el-option :value="320" label="过渡 0.32s" />
-                <el-option :value="420" label="过渡 0.42s" />
-              </el-select>
-            </div>
-          </div>
-
-          <div class="chart-shell">
-            <div ref="lineChartRef" class="line-chart"></div>
-
-            <div v-if="statPointCount === 0" class="chart-empty-mask">
-              <div class="chart-empty-title">暂无实时频谱数据</div>
-              <div class="chart-empty-desc">请选择站点并确认仿真器正在持续上报数据</div>
+            <div v-if="monitorState.monitorReady !== 1" class="chart-empty">
+              <div class="chart-empty-title">{{ monitorState.monitorMessage || '暂无实时数据' }}</div>
+              <div class="chart-empty-desc">{{ monitorState.monitorHint || '请先检查任务和设备状态。' }}</div>
+              <div class="chart-empty-actions">
+                <el-button type="primary" @click="manualRefresh">重新检查状态</el-button>
+              </div>
             </div>
           </div>
         </el-card>
       </el-col>
 
-      <el-col :span="7" class="equal-height-col">
-        <div class="side-panel-stack">
-          <el-card class="page-card side-panel-card" shadow="hover">
-            <template #header>
-              <div class="card-header">
-                <div>
-                  <div class="header-title">AI 推理状态</div>
-                  <div class="header-subtitle">当前帧模型使用情况</div>
-                </div>
+      <el-col :span="8" class="equal-height-col">
+        <el-card class="page-card equal-height-card" shadow="hover">
+          <template #header>
+            <div class="card-header">
+              <div>
+                <div class="header-title">监测链路状态</div>
+                <div class="header-subtitle">任务 → 设备 → 数据 → AI 结果</div>
               </div>
-            </template>
+            </div>
+          </template>
 
-            <div class="ai-status-grid">
-              <div class="ai-status-item">
-                <div class="ai-status-label">请求模式</div>
-                <div class="ai-status-value">{{ latestSnapshot.aiRequestMode || '-' }}</div>
+          <div class="status-list">
+            <div class="status-item">
+              <span class="status-label">任务名称</span>
+              <span class="status-value">{{ monitorState.taskName || '-' }}</span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">设备名称</span>
+              <span class="status-value">{{ monitorState.deviceName || '-' }}</span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">任务数量</span>
+              <span class="status-value">{{ monitorState.activeTaskCount || 0 }}</span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">最新采集时间</span>
+              <span class="status-value">{{ formatTime(monitorState.captureTime) }}</span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">中心频率</span>
+              <span class="status-value">{{ formatNumber(monitorState.centerFreqMhz, 'MHz') }}</span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">带宽</span>
+              <span class="status-value">{{ formatNumber(monitorState.bandwidthKhz, 'kHz') }}</span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">信号制式</span>
+              <span class="status-value">{{ monitorState.signalType || '-' }}</span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">峰值功率</span>
+              <span class="status-value">{{ formatNumber(monitorState.peakPowerDbm, 'dBm') }}</span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">SNR</span>
+              <span class="status-value">{{ formatNumber(monitorState.snrDb, 'dB') }}</span>
+            </div>
+          </div>
+
+          <div class="ai-panel">
+            <div class="ai-title">AI 识别信息</div>
+            <div class="ai-grid">
+              <div class="ai-card">
+                <div class="ai-card-label">识别标签</div>
+                <div class="ai-card-value">{{ monitorState.aiLabel || '-' }}</div>
               </div>
-              <div class="ai-status-item">
-                <div class="ai-status-label">实际推理</div>
-                <div class="ai-status-value">{{ latestSnapshot.aiActualMode || '-' }}</div>
+              <div class="ai-card">
+                <div class="ai-card-label">请求模式</div>
+                <div class="ai-card-value">{{ monitorState.aiRequestMode || '-' }}</div>
               </div>
-              <div class="ai-status-item">
-                <div class="ai-status-label">Fallback</div>
-                <div class="ai-status-value">
-                  <el-tag :type="Number(latestSnapshot.aiFallbackUsed || 0) === 1 ? 'danger' : 'success'">
-                    {{ latestSnapshot.aiFallbackUsedText }}
-                  </el-tag>
-                </div>
+              <div class="ai-card">
+                <div class="ai-card-label">实际模式</div>
+                <div class="ai-card-value">{{ monitorState.aiActualMode || '-' }}</div>
               </div>
-              <div class="ai-status-item">
-                <div class="ai-status-label">模型名称</div>
-                <div class="ai-status-value">{{ latestSnapshot.aiModelName || '-' }}</div>
+              <div class="ai-card">
+                <div class="ai-card-label">模型名称</div>
+                <div class="ai-card-value">{{ monitorState.aiModelName || '-' }}</div>
               </div>
             </div>
 
-            <div class="ai-reason-box">
-              <div class="reason-title">AI 说明</div>
-              <div class="reason-content">{{ latestSnapshot.aiReason || '当前暂无 AI 解释信息' }}</div>
+            <div class="ai-reason">
+              <div class="ai-reason-label">AI 说明</div>
+              <div class="ai-reason-text">{{ monitorState.aiReason || '当前暂无 AI 解释信息。' }}</div>
             </div>
-          </el-card>
-
-          <el-card class="page-card side-panel-card" shadow="hover">
-            <template #header>
-              <div class="card-header">
-                <div>
-                  <div class="header-title">实时参数</div>
-                  <div class="header-subtitle">最近一次监测快照详情</div>
-                </div>
-              </div>
-            </template>
-
-            <div class="params-panel">
-              <div class="param-row">
-                <span class="param-label">设备名称</span>
-                <span class="param-value">{{ latestSnapshot.deviceName || '-' }}</span>
-              </div>
-              <div class="param-row">
-                <span class="param-label">任务名称</span>
-                <span class="param-value">{{ latestSnapshot.taskName || '-' }}</span>
-              </div>
-              <div class="param-row">
-                <span class="param-label">AI识别</span>
-                <span class="param-value">{{ latestSnapshot.aiLabel || '-' }}</span>
-              </div>
-              <div class="param-row">
-                <span class="param-label">中心频率</span>
-                <span class="param-value">{{ formatNumber(latestSnapshot.centerFreqMhz) }} MHz</span>
-              </div>
-              <div class="param-row">
-                <span class="param-label">带宽</span>
-                <span class="param-value">{{ formatNumber(latestSnapshot.bandwidthKhz) }} kHz</span>
-              </div>
-              <div class="param-row">
-                <span class="param-label">峰值功率</span>
-                <span class="param-value">{{ formatNumber(latestSnapshot.peakPowerDbm) }} dBm</span>
-              </div>
-              <div class="param-row">
-                <span class="param-label">平均功率</span>
-                <span class="param-value">{{ statAvgPowerText }}</span>
-              </div>
-              <div class="param-row">
-                <span class="param-label">SNR</span>
-                <span class="param-value">{{ formatNumber(latestSnapshot.snrDb) }} dB</span>
-              </div>
-              <div class="param-row">
-                <span class="param-label">信道模型</span>
-                <span class="param-value">{{ latestSnapshot.channelModel || '-' }}</span>
-              </div>
-              <div class="param-row">
-                <span class="param-label">采集时间</span>
-                <span class="param-value">{{ formatTime(latestSnapshot.captureTime) }}</span>
-              </div>
-            </div>
-          </el-card>
-        </div>
+          </div>
+        </el-card>
       </el-col>
     </el-row>
   </div>
@@ -252,60 +219,168 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import * as echarts from 'echarts'
 import { ElMessage } from 'element-plus'
 import { getRealtimeLatestApi, getStationListApi } from '../../api/overview'
+import { getToken } from '../../utils/auth'
 
-const stationOptions = ref([])
 const lineChartRef = ref(null)
+const stationOptions = ref([])
 const wsConnected = ref(false)
 const enablePolling = ref(true)
 const pollingInterval = ref(1000)
 const networkErrorMessage = ref('')
-const enableCurveSmoothing = ref(true)
-const transitionDuration = ref(320)
 
 const queryForm = reactive({
   stationId: ''
 })
 
-const createDefaultSnapshot = () => ({
-  id: '',
-  stationId: '',
+const createDefaultState = () => ({
+  id: null,
+  stationId: null,
   stationName: '',
+  deviceId: null,
   deviceName: '',
+  taskId: null,
   taskName: '',
+  centerFreqMhz: null,
+  bandwidthKhz: null,
   signalType: '',
   channelModel: '',
+  peakPowerDbm: null,
+  snrDb: null,
   aiLabel: '',
   aiRequestMode: '',
   aiActualMode: '',
-  aiFallbackUsed: 0,
-  aiFallbackUsedText: '未发生',
   aiModelName: '',
   aiReason: '',
-  centerFreqMhz: null,
-  bandwidthKhz: null,
-  peakPowerDbm: null,
-  snrDb: null,
+  powerPointsJson: '[]',
   captureTime: '',
-  powerPointsJson: '[]'
+  stationOnlineStatus: 0,
+  deviceRunStatus: 0,
+  activeTaskCount: 0,
+  hasSnapshot: 0,
+  dataDelaySeconds: null,
+  dataFreshness: 'NONE',
+  monitorStage: 'WAIT_SELECT',
+  monitorReady: 0,
+  monitorMessage: '请先选择监测站点',
+  monitorHint: '当前页面会根据任务状态、设备状态和数据新鲜度自动给出提示。'
 })
 
-const latestSnapshot = reactive(createDefaultSnapshot())
-const displayedPoints = ref([])
-const displayedXAxis = ref([])
+const monitorState = reactive(createDefaultState())
 
-let lineChartInstance = null
+let chartInstance = null
 let pollingTimer = null
 let socket = null
 let wsSessionId = 0
 let reconnectTimer = null
-let networkWarnShown = false
-let lastAppliedSnapshotId = null
-let animationFrameId = null
 
-const normalizeId = (value) => {
-  if (value === null || value === undefined || value === '') return ''
-  const numberValue = Number(value)
-  return Number.isNaN(numberValue) ? String(value) : numberValue
+const currentStationName = computed(() => {
+  const id = Number(queryForm.stationId || 0)
+  const item = stationOptions.value.find(row => Number(row.id) === id)
+  return item?.stationName || monitorState.stationName || ''
+})
+
+const freshnessDelayText = computed(() => {
+  if (monitorState.dataDelaySeconds === null || monitorState.dataDelaySeconds === undefined) {
+    return '-'
+  }
+  return `${monitorState.dataDelaySeconds}s`
+})
+
+const freshnessText = computed(() => {
+  switch (monitorState.dataFreshness) {
+    case 'FRESH':
+      return '实时数据'
+    case 'DELAYED':
+      return '延迟数据'
+    case 'EXPIRED':
+      return '过期数据'
+    default:
+      return '暂无数据'
+  }
+})
+
+const freshnessTagType = computed(() => {
+  switch (monitorState.dataFreshness) {
+    case 'FRESH':
+      return 'success'
+    case 'DELAYED':
+      return 'warning'
+    case 'EXPIRED':
+      return 'danger'
+    default:
+      return 'info'
+  }
+})
+
+const connectionStatusText = computed(() => {
+  if (networkErrorMessage.value) return '网络异常'
+  if (wsConnected.value) return 'WS在线'
+  return '轮询兜底'
+})
+
+const connectionStatusDesc = computed(() => {
+  if (networkErrorMessage.value) {
+    return '自动重连中'
+  }
+  return monitorState.monitorReady === 1 ? '实时链路正常' : '按状态自动提示'
+})
+
+const statusBannerTagType = computed(() => {
+  if (monitorState.monitorReady === 1) return 'success'
+  if (monitorState.monitorStage === 'DATA_DELAYED') return 'warning'
+  if (monitorState.monitorStage === 'DATA_EXPIRED') return 'danger'
+  return 'info'
+})
+
+const statusBannerTagText = computed(() => {
+  switch (monitorState.monitorStage) {
+    case 'READY':
+      return '实时监测中'
+    case 'NO_RUNNING_TASK':
+      return '未启动任务'
+    case 'WAITING_DATA':
+      return '等待首帧数据'
+    case 'DATA_DELAYED':
+      return '数据延迟'
+    case 'DATA_EXPIRED':
+      return '数据过期'
+    default:
+      return '待选择站点'
+  }
+})
+
+const bannerClass = computed(() => {
+  switch (monitorState.monitorStage) {
+    case 'READY':
+      return 'success'
+    case 'DATA_DELAYED':
+      return 'warning'
+    case 'DATA_EXPIRED':
+      return 'danger'
+    default:
+      return 'info'
+  }
+})
+
+const chartSubtitle = computed(() => {
+  if (monitorState.monitorReady === 1) {
+    return '当前任务运行正常，图表仅在实时数据新鲜时刷新'
+  }
+  return '未满足实时监测条件时，不再继续展示旧图，避免误判为“假实时”'
+})
+
+const formatTime = (value) => {
+  if (!value) return '-'
+  return String(value).replace('T', ' ')
+}
+
+const formatNumber = (value, suffix = '') => {
+  if (value === null || value === undefined || value === '') return '-'
+  const num = Number(value)
+  if (Number.isNaN(num)) {
+    return suffix ? `${value} ${suffix}` : String(value)
+  }
+  return suffix ? `${num} ${suffix}` : String(num)
 }
 
 const parsePoints = (value) => {
@@ -324,514 +399,108 @@ const parsePoints = (value) => {
   }
 }
 
-const rawPoints = computed(() => parsePoints(latestSnapshot.powerPointsJson))
-
-const currentStationName = computed(() => {
-  const currentId = normalizeId(queryForm.stationId)
-  const match = stationOptions.value.find(item => normalizeId(item.id) === currentId)
-  return match?.stationName || latestSnapshot.stationName || ''
-})
-
-const statPointCount = computed(() => rawPoints.value.length)
-
-const statAvgPowerValue = computed(() => {
-  if (!rawPoints.value.length) return null
-  const sum = rawPoints.value.reduce((acc, item) => acc + Number(item || 0), 0)
-  return Number((sum / rawPoints.value.length).toFixed(2))
-})
-
-const statAvgPowerText = computed(() => {
-  return statAvgPowerValue.value === null ? '-' : `${statAvgPowerValue.value} dBm`
-})
-
-const statPeakInfo = computed(() => {
-  if (!rawPoints.value.length) {
-    return { value: null, index: null }
-  }
-
-  let maxValue = rawPoints.value[0]
-  let maxIndex = 0
-  rawPoints.value.forEach((value, index) => {
-    if (Number(value) > Number(maxValue)) {
-      maxValue = value
-      maxIndex = index
-    }
-  })
-
-  return {
-    value: Number(maxValue),
-    index: maxIndex
-  }
-})
-
-const statPeakPointText = computed(() => {
-  return statPeakInfo.value.index === null ? '-' : `#${statPeakInfo.value.index + 1}`
-})
-
-const chartAvgPowerValue = computed(() => {
-  if (!displayedPoints.value.length) return null
-  const sum = displayedPoints.value.reduce((acc, item) => acc + Number(item || 0), 0)
-  return Number((sum / displayedPoints.value.length).toFixed(2))
-})
-
-const chartPeakInfo = computed(() => {
-  if (!displayedPoints.value.length) {
-    return { value: null, index: null }
-  }
-
-  let maxValue = displayedPoints.value[0]
-  let maxIndex = 0
-  displayedPoints.value.forEach((value, index) => {
-    if (Number(value) > Number(maxValue)) {
-      maxValue = value
-      maxIndex = index
-    }
-  })
-
-  return {
-    value: Number(maxValue),
-    index: maxIndex
-  }
-})
-
-const signalQualityText = computed(() => {
-  const snr = Number(latestSnapshot.snrDb)
-  if (Number.isNaN(snr)) return '信号质量未知'
-  if (snr >= 20) return '信号质量优秀'
-  if (snr >= 10) return '信号质量良好'
-  if (snr >= 5) return '信号质量一般'
-  return '信号质量偏弱'
-})
-
-const signalQualityTagType = computed(() => {
-  const snr = Number(latestSnapshot.snrDb)
-  if (Number.isNaN(snr)) return 'info'
-  if (snr >= 20) return 'success'
-  if (snr >= 10) return 'primary'
-  if (snr >= 5) return 'warning'
-  return 'danger'
-})
-
-const connectionStatusText = computed(() => {
-  if (networkErrorMessage.value) return '网络异常'
-  if (wsConnected.value) return 'WS在线'
-  return '轮询兜底'
-})
-
-const connectionStatusDesc = computed(() => {
-  if (networkErrorMessage.value) return '网络波动中，系统自动重连并快速轮询'
-  return formatTime(latestSnapshot.captureTime)
-})
-
-const connectionTagType = computed(() => {
-  if (networkErrorMessage.value) return 'danger'
-  if (wsConnected.value) return 'success'
-  return 'warning'
-})
-
-const formatTime = (value) => {
-  if (!value) return '-'
-  return String(value).replace('T', ' ')
-}
-
-const formatNumber = (value) => {
-  if (value === null || value === undefined || value === '') return '-'
-  const num = Number(value)
-  return Number.isNaN(num) ? String(value) : num.toFixed(2)
-}
-
 const buildXAxis = (points, centerFreqMhz, bandwidthKhz) => {
   if (!points.length) return []
-
   const center = Number(centerFreqMhz)
-  const bwKhz = Number(bandwidthKhz)
-
-  if (Number.isNaN(center) || Number.isNaN(bwKhz) || bwKhz <= 0) {
+  const bandwidth = Number(bandwidthKhz)
+  if (Number.isNaN(center) || Number.isNaN(bandwidth) || bandwidth <= 0) {
     return points.map((_, index) => index + 1)
   }
 
-  const start = center - bwKhz / 2000
-  const step = (bwKhz / 1000) / Math.max(points.length - 1, 1)
-  return points.map((_, index) => Number((start + step * index).toFixed(3)))
+  const start = center - bandwidth / 2000
+  const step = (bandwidth / 1000) / Math.max(points.length - 1, 1)
+  return points.map((_, index) => Number((start + index * step).toFixed(3)))
 }
 
-const computeSoftEnvelope = (points) => {
-  if (!points.length) return []
-
-  const radius = 2
-  const upper = points.map((_, index) => {
-    const start = Math.max(0, index - radius)
-    const end = Math.min(points.length - 1, index + radius)
-    let maxValue = points[start]
-    for (let i = start + 1; i <= end; i += 1) {
-      if (points[i] > maxValue) {
-        maxValue = points[i]
-      }
-    }
-    return maxValue
-  })
-
-  const smoothed = upper.map((_, index) => {
-    const start = Math.max(0, index - radius)
-    const end = Math.min(upper.length - 1, index + radius)
-    let sum = 0
-    for (let i = start; i <= end; i += 1) {
-      sum += upper[i]
-    }
-    return Number((sum / (end - start + 1)).toFixed(2))
-  })
-
-  return smoothed
-}
-
-const ensureLineChart = () => {
+const ensureChart = () => {
   if (!lineChartRef.value) return null
-  if (!lineChartInstance) {
-    lineChartInstance = echarts.init(lineChartRef.value)
+  if (!chartInstance) {
+    chartInstance = echarts.init(lineChartRef.value)
   }
-  return lineChartInstance
+  return chartInstance
 }
 
-const easeInOutCubic = (t) => {
-  return t < 0.5
-    ? 4 * t * t * t
-    : 1 - Math.pow(-2 * t + 2, 3) / 2
-}
-
-const cancelPointAnimation = () => {
-  if (animationFrameId) {
-    cancelAnimationFrame(animationFrameId)
-    animationFrameId = null
-  }
-}
-
-const renderLineChart = () => {
-  const chart = ensureLineChart()
+const renderChart = async () => {
+  await nextTick()
+  const chart = ensureChart()
   if (!chart) return
 
-  const points = displayedPoints.value
-  const xData = displayedXAxis.value.length === points.length ? displayedXAxis.value : points.map((_, index) => index + 1)
-  const avgValue = chartAvgPowerValue.value ?? 0
-  const maxIndex = chartPeakInfo.value.index
-  const maxValue = chartPeakInfo.value.value
-  const envelopePoints = computeSoftEnvelope(points)
+  const points = parsePoints(monitorState.powerPointsJson)
+  const xAxis = buildXAxis(points, monitorState.centerFreqMhz, monitorState.bandwidthKhz)
 
-  chart.setOption(
-    {
-      backgroundColor: 'transparent',
-      animation: false,
-      tooltip: {
-        trigger: 'axis',
-        backgroundColor: 'rgba(15, 23, 42, 0.96)',
-        borderColor: 'rgba(37, 99, 235, 0.24)',
-        borderWidth: 1,
-        textStyle: {
-          color: '#e5eefc'
-        },
-        formatter: (params) => {
-          const mainItem = params?.find(item => item.seriesName === '实时频谱') || params?.[0]
-          if (!mainItem) return ''
-          return `
-            <div style="padding:6px 2px;min-width:160px;">
-              <div style="font-weight:700;margin-bottom:8px;">实时频谱点位</div>
-              <div style="margin-bottom:4px;">频率：${mainItem.axisValue}</div>
-              <div style="margin-bottom:4px;">功率：${mainItem.data} dBm</div>
-              <div>站点：${currentStationName.value || '-'}</div>
-            </div>
-          `
-        }
-      },
-      grid: {
-        left: 56,
-        right: 24,
-        top: 34,
-        bottom: 70
-      },
-      xAxis: {
-        type: 'category',
-        data: xData,
-        boundaryGap: false,
-        name: points.length ? '频率 / MHz' : '',
-        nameLocation: 'middle',
-        nameGap: 40,
-        nameTextStyle: {
-          color: '#6b7b93',
-          fontWeight: 600
-        },
-        axisLine: {
-          lineStyle: {
-            color: '#d7e3f2'
-          }
-        },
-        axisTick: {
-          show: false
-        },
-        axisLabel: {
-          color: '#73839d',
-          margin: 14,
-          showMaxLabel: true,
-          showMinLabel: true
-        },
-        splitLine: {
-          show: false
-        }
-      },
-      yAxis: {
-        type: 'value',
-        name: '功率 / dBm',
-        nameTextStyle: {
-          color: '#6b7b93',
-          fontWeight: 600
-        },
-        axisLabel: {
-          color: '#73839d'
-        },
-        axisLine: {
-          show: false
-        },
-        splitLine: {
-          lineStyle: {
-            color: 'rgba(148, 163, 184, 0.18)',
-            type: 'dashed'
-          }
-        }
-      },
-      dataZoom: [
-        {
-          type: 'inside',
-          zoomOnMouseWheel: true,
-          moveOnMouseMove: true
-        },
-        {
-          type: 'slider',
-          height: 18,
-          bottom: 16,
-          borderColor: 'transparent',
-          backgroundColor: '#edf3fb',
-          fillerColor: 'rgba(37, 99, 235, 0.16)',
-          moveHandleSize: 0,
-          dataBackground: {
-            lineStyle: {
-              color: '#bfd5f7'
-            },
-            areaStyle: {
-              color: '#e8f0fd'
-            }
-          }
-        }
-      ],
-      series: [
-        {
-          name: '柔和包络线',
-          type: 'line',
-          smooth: 0.45,
-          showSymbol: false,
-          silent: true,
-          z: 1,
-          lineStyle: {
-            width: 9,
-            color: 'rgba(59, 130, 246, 0.16)',
-            cap: 'round',
-            join: 'round'
-          },
-          data: envelopePoints
-        },
-        {
-          name: '实时频谱',
-          type: 'line',
-          smooth: enableCurveSmoothing.value ? 0.22 : 0,
-          showSymbol: false,
-          sampling: 'lttb',
-          z: 3,
-          lineStyle: {
-            width: 3,
-            color: '#2563eb',
-            cap: 'round',
-            join: 'round'
-          },
-          itemStyle: {
-            color: '#2563eb'
-          },
-          areaStyle: {
-            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-              { offset: 0, color: 'rgba(37, 99, 235, 0.18)' },
-              { offset: 0.55, color: 'rgba(59, 130, 246, 0.06)' },
-              { offset: 1, color: 'rgba(59, 130, 246, 0.01)' }
-            ])
-          },
-          markLine: points.length
-            ? {
-                silent: true,
-                symbol: 'none',
-                lineStyle: {
-                  color: '#f59e0b',
-                  type: 'dashed',
-                  width: 1.5
-                },
-                label: {
-                  color: '#b45309',
-                  formatter: `均值 ${avgValue} dBm`
-                },
-                data: [{ yAxis: avgValue }]
-              }
-            : undefined,
-          data: points
-        },
-        {
-          name: '峰值呼吸点',
-          type: 'effectScatter',
-          z: 6,
-          showEffectOn: 'render',
-          rippleEffect: {
-            scale: 2.2,
-            brushType: 'stroke',
-            period: 4
-          },
-          symbolSize: 12,
-          itemStyle: {
-            color: '#16a34a',
-            borderColor: '#ffffff',
-            borderWidth: 2,
-            shadowBlur: 10,
-            shadowColor: 'rgba(22, 163, 74, 0.25)'
-          },
-          label: {
-            show: true,
-            position: 'top',
-            color: '#15803d',
-            fontWeight: 700,
-            formatter: ({ data }) => (data ? `峰值 ${data[1]} dBm` : '')
-          },
-          data: maxIndex === null || maxValue === null ? [] : [[xData[maxIndex], maxValue]]
-        }
-      ]
+  chart.setOption({
+    animation: false,
+    tooltip: {
+      trigger: 'axis'
     },
-    true
-  )
+    grid: {
+      left: 56,
+      right: 24,
+      top: 32,
+      bottom: 60
+    },
+    xAxis: {
+      type: 'category',
+      boundaryGap: false,
+      data: xAxis,
+      name: points.length ? '频率 / MHz' : '',
+      nameLocation: 'middle',
+      nameGap: 36
+    },
+    yAxis: {
+      type: 'value',
+      name: '功率 / dBm'
+    },
+    series: [
+      {
+        name: '实时频谱',
+        type: 'line',
+        smooth: 0.2,
+        showSymbol: false,
+        lineStyle: {
+          width: 3,
+          color: '#2563eb'
+        },
+        areaStyle: {
+          color: 'rgba(37, 99, 235, 0.12)'
+        },
+        data: points
+      }
+    ]
+  })
+
+  chart.resize()
 }
 
-const animateDisplayedPoints = (targetPoints, targetXAxis) => {
-  cancelPointAnimation()
+const resetMonitorState = () => {
+  Object.assign(monitorState, createDefaultState())
+}
 
-  if (!targetPoints.length) {
-    displayedPoints.value = []
-    displayedXAxis.value = []
-    renderLineChart()
+const applyState = async (raw) => {
+  if (!raw) {
+    resetMonitorState()
     return
   }
 
-  const source = [...displayedPoints.value]
-  const needDirectApply = source.length === 0 || source.length !== targetPoints.length
+  Object.assign(monitorState, createDefaultState(), raw)
 
-  displayedXAxis.value = [...targetXAxis]
-
-  if (needDirectApply) {
-    displayedPoints.value = [...targetPoints]
-    renderLineChart()
-    return
+  if (monitorState.monitorReady === 1) {
+    await renderChart()
+  } else if (chartInstance) {
+    chartInstance.clear()
+    await nextTick()
+    chartInstance.resize()
   }
-
-  const duration = Number(transitionDuration.value) || 320
-  const start = performance.now()
-
-  const step = (now) => {
-    const progress = Math.min((now - start) / duration, 1)
-    const eased = easeInOutCubic(progress)
-
-    displayedPoints.value = targetPoints.map((value, index) => {
-      const from = Number(source[index] ?? value)
-      const to = Number(value)
-      return Number((from + (to - from) * eased).toFixed(2))
-    })
-
-    renderLineChart()
-
-    if (progress < 1) {
-      animationFrameId = requestAnimationFrame(step)
-    } else {
-      displayedPoints.value = [...targetPoints]
-      renderLineChart()
-      animationFrameId = null
-    }
-  }
-
-  animationFrameId = requestAnimationFrame(step)
-}
-
-const clearNetworkError = () => {
-  networkErrorMessage.value = ''
-  networkWarnShown = false
-}
-
-const resetSnapshot = async () => {
-  cancelPointAnimation()
-  Object.assign(latestSnapshot, createDefaultSnapshot())
-  displayedPoints.value = []
-  displayedXAxis.value = []
-  lastAppliedSnapshotId = null
-  await nextTick()
-  renderLineChart()
 }
 
 const getReadableErrorText = (error) => {
-  const msg = String(error?.message || error?.msg || '')
-  if (!msg) return '未知异常'
-  if (msg.includes('Network Error')) return '网络连接异常'
-  if (msg.includes('ERR_NETWORK_CHANGED')) return '网络环境发生切换'
-  return msg
-}
-
-const applyTransitionDuration = () => {
-  // 只修改后续帧过渡时长，不需要额外处理
-}
-
-const applySnapshot = async (raw, options = {}) => {
-  const { fromPush = false } = options
-
-  if (!raw) {
-    await resetSnapshot()
-    return
-  }
-
-  const snapshotId = raw.id ?? null
-  if (fromPush && snapshotId !== null && snapshotId === lastAppliedSnapshotId) {
-    return
-  }
-
-  latestSnapshot.id = raw.id ?? ''
-  latestSnapshot.stationId = raw.stationId ?? ''
-  latestSnapshot.stationName = raw.stationName ?? ''
-  latestSnapshot.deviceName = raw.deviceName ?? ''
-  latestSnapshot.taskName = raw.taskName ?? ''
-  latestSnapshot.signalType = raw.signalType ?? ''
-  latestSnapshot.channelModel = raw.channelModel ?? ''
-  latestSnapshot.aiLabel = raw.aiLabel ?? ''
-  latestSnapshot.aiRequestMode = raw.aiRequestMode ?? raw.requestMode ?? ''
-  latestSnapshot.aiActualMode = raw.aiActualMode ?? raw.actualMode ?? raw.inferenceMode ?? ''
-  latestSnapshot.aiFallbackUsed = raw.aiFallbackUsed ?? raw.fallbackUsed ?? 0
-  latestSnapshot.aiFallbackUsedText = Number(raw.aiFallbackUsed ?? raw.fallbackUsed ?? 0) === 1 ? '已发生' : '未发生'
-  latestSnapshot.aiModelName = raw.aiModelName ?? raw.modelName ?? ''
-  latestSnapshot.aiReason = raw.aiReason ?? raw.reason ?? ''
-  latestSnapshot.centerFreqMhz = raw.centerFreqMhz ?? null
-  latestSnapshot.bandwidthKhz = raw.bandwidthKhz ?? null
-  latestSnapshot.peakPowerDbm = raw.peakPowerDbm ?? null
-  latestSnapshot.snrDb = raw.snrDb ?? null
-  latestSnapshot.captureTime = raw.captureTime ?? ''
-  latestSnapshot.powerPointsJson = raw.powerPointsJson ?? raw.powerPoints ?? '[]'
-
-  const targetPoints = parsePoints(latestSnapshot.powerPointsJson)
-  const targetXAxis = buildXAxis(targetPoints, latestSnapshot.centerFreqMhz, latestSnapshot.bandwidthKhz)
-
-  clearNetworkError()
-  lastAppliedSnapshotId = snapshotId
-
-  await nextTick()
-  animateDisplayedPoints(targetPoints, targetXAxis)
+  if (!error) return '未知错误'
+  return error?.message || error?.msg || '网络请求失败'
 }
 
 const loadLatestSpectrum = async ({ silent = false } = {}) => {
   if (!queryForm.stationId) {
-    await resetSnapshot()
+    resetMonitorState()
     return
   }
 
@@ -839,17 +508,12 @@ const loadLatestSpectrum = async ({ silent = false } = {}) => {
     const res = await getRealtimeLatestApi({
       stationId: queryForm.stationId
     })
-
-    const snapshot = res?.data || null
-    await applySnapshot(snapshot, { fromPush: true })
+    await applyState(res?.data || null)
+    networkErrorMessage.value = ''
   } catch (error) {
     networkErrorMessage.value = getReadableErrorText(error)
-
     if (!silent) {
-      ElMessage.warning(`实时频谱刷新失败：${networkErrorMessage.value}`)
-    } else if (!networkWarnShown) {
-      networkWarnShown = true
-      ElMessage.warning('实时频谱轮询出现网络波动，系统将自动重试')
+      ElMessage.warning(`实时监测状态刷新失败：${networkErrorMessage.value}`)
     }
   }
 }
@@ -861,36 +525,12 @@ const stopPolling = () => {
   }
 }
 
-const startPolling = () => {
-  stopPolling()
-
-  if (!enablePolling.value || !queryForm.stationId) return
-
-  pollingTimer = setInterval(async () => {
-    if (document.hidden) return
-    if (wsConnected.value) return
-    await loadLatestSpectrum({ silent: true })
-  }, Number(pollingInterval.value))
-}
-
 const restartPolling = () => {
-  startPolling()
-}
-
-const resolveWsBaseUrl = () => {
-  const envBase = import.meta.env.VITE_WS_BASE_URL
-  if (envBase) {
-    return String(envBase).replace(/\/$/, '')
-  }
-
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-  const host = window.location.host
-  if (host) {
-    return `${protocol}://${host.replace(/:\d+$/, ':9000')}`
-  }
-
-  const hostname = window.location.hostname || 'localhost'
-  return `${protocol}://${hostname}:9000`
+  stopPolling()
+  if (!enablePolling.value || !queryForm.stationId) return
+  pollingTimer = setInterval(() => {
+    loadLatestSpectrum({ silent: true })
+  }, Number(pollingInterval.value || 1000))
 }
 
 const clearReconnectTimer = () => {
@@ -900,33 +540,34 @@ const clearReconnectTimer = () => {
   }
 }
 
-const scheduleReconnect = () => {
+const disconnectWs = () => {
   clearReconnectTimer()
+  if (socket) {
+    try {
+      socket.onopen = null
+      socket.onmessage = null
+      socket.onerror = null
+      socket.onclose = null
 
-  if (!queryForm.stationId) return
-
-  reconnectTimer = setTimeout(() => {
-    connectWs()
-  }, 1500)
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.close(1000, 'station changed')
+      } else if (socket.readyState === WebSocket.CLOSING || socket.readyState === WebSocket.CLOSED) {
+        // ignore
+      }
+    } catch (error) {
+      // ignore
+    }
+    socket = null
+  }
+  wsConnected.value = false
 }
 
-const disconnectWs = () => {
-  wsConnected.value = false
+const scheduleReconnect = (sessionId) => {
   clearReconnectTimer()
-
-  if (!socket) return
-
-  const currentSocket = socket
-  socket = null
-
-  currentSocket.onopen = null
-  currentSocket.onmessage = null
-  currentSocket.onerror = null
-  currentSocket.onclose = null
-
-  if (currentSocket.readyState === WebSocket.OPEN || currentSocket.readyState === WebSocket.CONNECTING) {
-    currentSocket.close()
-  }
+  reconnectTimer = setTimeout(() => {
+    if (sessionId !== wsSessionId) return
+    connectWs()
+  }, 1800)
 }
 
 const connectWs = () => {
@@ -934,131 +575,130 @@ const connectWs = () => {
 
   if (!queryForm.stationId) return
 
-  const currentSession = ++wsSessionId
-  const wsBaseUrl = resolveWsBaseUrl()
-  const wsUrl = `${wsBaseUrl}/ws/monitor/${queryForm.stationId}`
+  const token = getToken()
+  if (!token) {
+    networkErrorMessage.value = '缺少登录令牌，无法建立实时连接'
+    return
+  }
+
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
+  const hostname = window.location.hostname || '127.0.0.1'
+  const port = window.location.port
+  const devPorts = ['3000', '5173', '4173']
+  const wsPort = devPorts.includes(port) ? '9000' : port
+  const wsUrl = `${protocol}://${hostname}${wsPort ? `:${wsPort}` : ''}/ws/monitor/${queryForm.stationId}?token=${encodeURIComponent(token)}`
+  const sessionId = Date.now()
+  wsSessionId = sessionId
 
   try {
-    const currentSocket = new WebSocket(wsUrl)
-    socket = currentSocket
+    socket = new WebSocket(wsUrl)
 
-    currentSocket.onopen = () => {
-      if (currentSession !== wsSessionId) return
+    socket.onopen = () => {
+      if (sessionId !== wsSessionId) return
       wsConnected.value = true
-      clearNetworkError()
+      networkErrorMessage.value = ''
+    }
+
+    socket.onmessage = async (event) => {
+      if (sessionId !== wsSessionId) return
 
       try {
-        currentSocket.send('refresh')
+        const payload = JSON.parse(event.data || '{}')
+        if (payload?.type === 'realtime') {
+          await applyState(payload.data || null)
+        }
       } catch (error) {
-        console.warn('WS refresh 发送失败：', error)
+        console.error('解析实时推送失败', error)
       }
     }
 
-    currentSocket.onmessage = async (event) => {
-      if (currentSession !== wsSessionId) return
-
-      try {
-        const message = JSON.parse(event.data)
-        if (message?.type === 'pong') return
-        await applySnapshot(message?.data || message, { fromPush: true })
-      } catch (error) {
-        console.error('实时频谱 WS 消息解析失败：', error)
-      }
+    socket.onerror = () => {
+      if (sessionId !== wsSessionId) return
+      wsConnected.value = false
+      networkErrorMessage.value = 'WebSocket 连接异常，已自动切回轮询'
     }
 
-    currentSocket.onerror = () => {
-      if (currentSession !== wsSessionId) return
+    socket.onclose = () => {
+      if (sessionId !== wsSessionId) return
       wsConnected.value = false
-    }
-
-    currentSocket.onclose = () => {
-      if (currentSession !== wsSessionId) return
-      wsConnected.value = false
-      scheduleReconnect()
+      scheduleReconnect(sessionId)
     }
   } catch (error) {
     wsConnected.value = false
-    console.error('实时频谱 WS 连接失败：', error)
-    scheduleReconnect()
+    networkErrorMessage.value = getReadableErrorText(error)
+    scheduleReconnect(sessionId)
   }
 }
 
 const handleStationChange = async () => {
-  if (!queryForm.stationId) {
-    disconnectWs()
-    stopPolling()
-    await resetSnapshot()
-    return
-  }
-
-  await loadLatestSpectrum({ silent: true })
+  disconnectWs()
+  await loadLatestSpectrum()
   connectWs()
-  startPolling()
+  restartPolling()
 }
 
 const manualRefresh = async () => {
-  if (socket && wsConnected.value && socket.readyState === WebSocket.OPEN) {
+  await loadLatestSpectrum()
+  if (socket && wsConnected.value) {
     try {
       socket.send('refresh')
     } catch (error) {
-      console.warn('WS 手动刷新发送失败，改走 HTTP：', error)
+      console.error(error)
     }
+  } else {
+    connectWs()
   }
-  await loadLatestSpectrum({ silent: false })
 }
 
 const loadStations = async () => {
-  const res = await getStationListApi()
-  stationOptions.value = res?.data || []
+  try {
+    const res = await getStationListApi()
+    stationOptions.value = res?.data || []
 
-  if (!queryForm.stationId && stationOptions.value.length > 0) {
-    queryForm.stationId = stationOptions.value[0].id
+    if (!queryForm.stationId && stationOptions.value.length > 0) {
+      queryForm.stationId = stationOptions.value[0].id
+    }
+  } catch (error) {
+    console.error(error)
+    ElMessage.error(error?.message || '站点列表加载失败')
   }
 }
 
 const handleResize = () => {
-  if (lineChartInstance) {
-    lineChartInstance.resize()
-  }
+  chartInstance?.resize()
 }
 
-const handleOnline = async () => {
-  clearNetworkError()
-  connectWs()
-  startPolling()
+const handleTaskRuntimeLinkage = async (event) => {
+  const detail = event?.detail || {}
+  if (!queryForm.stationId) return
+  if (detail.stationId && Number(detail.stationId) !== Number(queryForm.stationId)) return
+
   await loadLatestSpectrum({ silent: true })
-}
-
-const handleVisibilityChange = async () => {
-  if (!document.hidden) {
-    await loadLatestSpectrum({ silent: true })
-  }
+  connectWs()
+  restartPolling()
 }
 
 onMounted(async () => {
   await loadStations()
   await loadLatestSpectrum({ silent: true })
   connectWs()
-  startPolling()
+  restartPolling()
 
   window.addEventListener('resize', handleResize)
-  window.addEventListener('online', handleOnline)
-  document.addEventListener('visibilitychange', handleVisibilityChange)
+  window.addEventListener('radio-task-status-changed', handleTaskRuntimeLinkage)
+  window.addEventListener('task-device-linkage-changed', handleTaskRuntimeLinkage)
 })
 
 onUnmounted(() => {
   stopPolling()
   disconnectWs()
-  clearReconnectTimer()
-  cancelPointAnimation()
-
   window.removeEventListener('resize', handleResize)
-  window.removeEventListener('online', handleOnline)
-  document.removeEventListener('visibilitychange', handleVisibilityChange)
+  window.removeEventListener('radio-task-status-changed', handleTaskRuntimeLinkage)
+  window.removeEventListener('task-device-linkage-changed', handleTaskRuntimeLinkage)
 
-  if (lineChartInstance) {
-    lineChartInstance.dispose()
-    lineChartInstance = null
+  if (chartInstance) {
+    chartInstance.dispose()
+    chartInstance = null
   }
 })
 </script>
@@ -1068,24 +708,24 @@ onUnmounted(() => {
   min-height: calc(100vh - 112px);
 }
 
-.top-metrics {
+.top-metrics,
+.query-card {
   margin-bottom: 16px;
 }
 
 .metric-card {
   border-radius: 18px;
-  position: relative;
   overflow: hidden;
-  border: none;
+  position: relative;
 }
 
 .metric-card::after {
   content: '';
   position: absolute;
-  right: -18px;
-  bottom: -18px;
-  width: 92px;
-  height: 92px;
+  right: -16px;
+  bottom: -16px;
+  width: 88px;
+  height: 88px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.12);
 }
@@ -1096,47 +736,27 @@ onUnmounted(() => {
 }
 
 .metric-value {
-  margin-top: 14px;
+  margin-top: 12px;
   font-size: 30px;
-  line-height: 1.1;
   font-weight: 700;
+  line-height: 1.1;
   color: #ffffff;
 }
 
 .metric-desc {
   margin-top: 10px;
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.84);
+  color: rgba(255, 255, 255, 0.86);
 }
 
-.ellipsis {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+.metric-blue { background: linear-gradient(135deg, #3b82f6, #60a5fa); }
+.metric-cyan { background: linear-gradient(135deg, #06b6d4, #22d3ee); }
+.metric-green { background: linear-gradient(135deg, #16a34a, #4ade80); }
+.metric-orange { background: linear-gradient(135deg, #f59e0b, #fbbf24); }
 
-.metric-blue {
-  background: linear-gradient(135deg, #409eff, #67c6ff);
-}
-
-.metric-cyan {
-  background: linear-gradient(135deg, #36cfc9, #5fe3da);
-}
-
-.metric-green {
-  background: linear-gradient(135deg, #67c23a, #85ce61);
-}
-
-.metric-orange {
-  background: linear-gradient(135deg, #e6a23c, #f3c26b);
-}
-
-.page-card {
+.page-card,
+.equal-height-card {
   border-radius: 18px;
-}
-
-.query-card {
-  margin-bottom: 16px;
 }
 
 .card-header {
@@ -1144,10 +764,6 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-}
-
-.chart-header {
-  align-items: flex-start;
 }
 
 .header-title {
@@ -1160,294 +776,247 @@ onUnmounted(() => {
   margin-top: 4px;
   font-size: 13px;
   color: #909399;
-  line-height: 1.6;
 }
 
 .header-actions {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 .filter-form {
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 
 .network-tip {
-  margin-top: 8px;
-  padding: 10px 14px;
+  margin-top: 6px;
+  padding: 10px 12px;
   border-radius: 12px;
   background: #fff7ed;
   color: #c2410c;
-  border: 1px solid #fed7aa;
   font-size: 13px;
-  line-height: 1.6;
+}
+
+.status-banner {
+  margin-top: 8px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  border: 1px solid #e5e7eb;
+}
+
+.banner-success {
+  background: linear-gradient(180deg, #f0fdf4 0%, #ffffff 100%);
+  border-color: #bbf7d0;
+}
+
+.banner-warning {
+  background: linear-gradient(180deg, #fffbeb 0%, #ffffff 100%);
+  border-color: #fde68a;
+}
+
+.banner-danger {
+  background: linear-gradient(180deg, #fef2f2 0%, #ffffff 100%);
+  border-color: #fecaca;
+}
+
+.banner-info {
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+  border-color: #dbeafe;
+}
+
+.status-banner-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.status-banner-desc {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.8;
+  color: #64748b;
+}
+
+.status-chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
 }
 
 .monitor-content-row {
+  display: flex;
   align-items: stretch;
+}
+
+.monitor-content-row > .el-col {
+  display: flex;
 }
 
 .equal-height-col {
   display: flex;
+  align-self: stretch;
 }
 
 .equal-height-card {
   width: 100%;
-}
-
-.spectrum-card {
-  width: 100%;
-  height: 100%;
-}
-
-.spectrum-card :deep(.el-card__body) {
   display: flex;
   flex-direction: column;
+}
+
+.equal-height-card :deep(.el-card__header) {
+  flex-shrink: 0;
+}
+
+.equal-height-card :deep(.el-card__body) {
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.chart-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.chart-box {
+  flex: 1;
+  min-height: 420px;
   height: 100%;
 }
 
-.chart-top-stats {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.stat-pill {
-  width: 148px;
-  min-width: 148px;
-  min-height: 74px;
-  box-sizing: border-box;
-  padding: 10px 14px;
-  border-radius: 14px;
-  background: #f7faff;
-  border: 1px solid #e5edf8;
-}
-
-.stat-pill-label {
-  display: block;
-  font-size: 12px;
-  color: #7b8aa3;
-}
-
-.stat-pill-value {
-  display: block;
-  margin-top: 6px;
-  min-height: 28px;
-  line-height: 28px;
-  font-size: 18px;
-  font-weight: 700;
-  color: #1f2a37;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.chart-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-}
-
-.toolbar-left,
-.toolbar-right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.chart-shell {
-  position: relative;
+.chart-empty {
   flex: 1;
-  min-height: 0;
-  border-radius: 18px;
-  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
-  border: 1px solid #edf2f9;
-  padding: 10px;
+  min-height: 420px;
   display: flex;
-}
-
-.line-chart {
-  width: 100%;
-  flex: 1;
-  min-height: 620px;
-}
-
-.chart-empty-mask {
-  position: absolute;
-  inset: 10px;
-  border-radius: 16px;
-  background: rgba(248, 251, 255, 0.88);
-  display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  flex-direction: column;
-  color: #7b8aa3;
   text-align: center;
+  gap: 10px;
+  border: 1px dashed #dbeafe;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
 }
 
 .chart-empty-title {
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 700;
-  color: #44536a;
+  color: #1f2937;
 }
 
 .chart-empty-desc {
-  margin-top: 8px;
-  font-size: 13px;
+  max-width: 520px;
+  font-size: 14px;
+  line-height: 1.9;
+  color: #64748b;
 }
 
-.side-panel-stack {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.side-panel-card {
-  width: 100%;
-}
-
-.ai-status-grid {
+.status-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.ai-status-item {
-  padding: 14px;
-  border-radius: 14px;
-  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
-  border: 1px solid #e8eff8;
-}
-
-.ai-status-label {
-  font-size: 12px;
-  color: #7b8aa3;
-}
-
-.ai-status-value {
-  margin-top: 8px;
-  font-size: 16px;
-  font-weight: 700;
-  color: #25324a;
-  word-break: break-word;
-}
-
-.ai-reason-box {
-  margin-top: 14px;
-  padding: 14px;
-  border-radius: 14px;
-  background: #f8fbff;
-  border: 1px solid #e8eff8;
-}
-
-.reason-title {
-  font-size: 13px;
-  font-weight: 700;
-  color: #25324a;
-}
-
-.reason-content {
-  margin-top: 8px;
-  line-height: 1.7;
-  color: #65758e;
-  font-size: 13px;
-}
-
-.params-panel {
-  display: flex;
-  flex-direction: column;
   gap: 10px;
 }
 
-.param-row {
+.equal-height-card :deep(.el-card__body) .status-list,
+.equal-height-card :deep(.el-card__body) .ai-panel {
+  flex-shrink: 0;
+}
+
+.status-item {
   display: flex;
-  align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
-  padding: 12px 0;
-  border-bottom: 1px dashed #e8eff8;
+  gap: 12px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border-radius: 12px;
 }
 
-.param-row:last-child {
-  border-bottom: none;
-}
-
-.param-label {
-  min-width: 84px;
+.status-label {
+  color: #64748b;
   font-size: 13px;
-  color: #7b8aa3;
 }
 
-.param-value {
-  flex: 1;
-  text-align: right;
-  font-size: 14px;
+.status-value {
+  font-size: 13px;
   font-weight: 600;
-  color: #25324a;
-  word-break: break-word;
-  font-variant-numeric: tabular-nums;
+  color: #1f2937;
+  text-align: right;
 }
 
-@media (max-width: 1400px) {
-  .chart-header {
-    flex-direction: column;
-  }
+.ai-panel {
+  margin-top: 16px;
+}
 
-  .chart-top-stats {
-    justify-content: flex-start;
-  }
+.ai-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.ai-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.ai-card {
+  padding: 14px 12px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+  border: 1px solid #e5eefb;
+}
+
+.ai-card-label {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.ai-card-value {
+  margin-top: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #1f2937;
+  word-break: break-all;
+}
+
+.ai-reason {
+  margin-top: 12px;
+  padding: 14px 12px;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.ai-reason-label {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.ai-reason-text {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.8;
+  color: #334155;
+  white-space: pre-wrap;
+}
+
+.ellipsis {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 @media (max-width: 1200px) {
-  .monitor-content-row .el-col {
-    width: 100%;
-    max-width: 100%;
-    flex: 0 0 100%;
+  .monitor-content-row {
+    display: block;
   }
 
-  .side-panel-stack {
-    margin-top: 16px;
-  }
-
-  .line-chart {
-    min-height: 520px;
-  }
-}
-
-@media (max-width: 768px) {
-  .metric-value {
-    font-size: 26px;
-  }
-
-  .stat-pill {
-    width: 100%;
-    min-width: 100%;
-  }
-
-  .line-chart {
-    min-height: 380px;
-  }
-
-  .ai-status-grid {
+  .ai-grid {
     grid-template-columns: 1fr;
-  }
-
-  .param-row {
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .param-value {
-    text-align: left;
   }
 }
 </style>

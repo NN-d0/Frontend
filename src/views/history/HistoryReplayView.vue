@@ -107,8 +107,8 @@
       </el-form>
     </el-card>
 
-    <el-row :gutter="16" style="margin-top: 16px;">
-      <el-col :span="14">
+    <el-row :gutter="16" class="workbench-row">
+      <el-col :span="14" class="workbench-col">
         <el-card class="page-card equal-height-card history-list-card" shadow="hover">
           <template #header>
             <div class="card-header">
@@ -187,13 +187,13 @@
         </el-card>
       </el-col>
 
-      <el-col :span="10">
-        <el-card class="page-card equal-height-card" shadow="hover">
+      <el-col :span="10" class="workbench-col">
+        <el-card class="page-card equal-height-card replay-card" shadow="hover">
           <template #header>
             <div class="card-header">
               <div>
                 <div class="header-title">频谱回放</div>
-                <div class="header-subtitle">当前筛选条件下的完整历史帧，可连续循环播放</div>
+                <div class="header-subtitle">平滑过渡回放 + 强化态势信息展示，支持连续循环播放</div>
               </div>
               <el-tag v-if="selectedHistory" :type="selectedHistory.alarmFlag === 1 ? 'danger' : 'success'">
                 {{ selectedHistory.alarmFlag === 1 ? '异常快照' : '正常快照' }}
@@ -201,91 +201,155 @@
             </div>
           </template>
 
-          <div class="replay-toolbar">
-            <el-button-group>
-              <el-button @click="prevFrame" :disabled="!replayRecords.length">上一帧</el-button>
-              <el-button type="primary" @click="toggleReplay" :disabled="replayRecords.length <= 1">
-                {{ isPlaying ? '暂停回放' : '开始回放' }}
-              </el-button>
-              <el-button @click="nextFrame" :disabled="!replayRecords.length">下一帧</el-button>
-            </el-button-group>
-
-            <div class="toolbar-right">
-              <div class="speed-box">
-                <span class="speed-label">速度</span>
-                <el-select v-model="replaySpeed" style="width: 110px" @change="handleSpeedChange">
-                  <el-option :value="500" label="2x" />
-                  <el-option :value="1000" label="1x" />
-                  <el-option :value="1500" label="0.75x" />
-                  <el-option :value="2000" label="0.5x" />
-                </el-select>
+          <div class="replay-card-body">
+            <div class="replay-hero" :class="selectedHistory?.alarmFlag === 1 ? 'hero-alert' : 'hero-normal'">
+              <div class="hero-left">
+                <div class="hero-kicker">历史回放工作台</div>
+                <div class="hero-title">
+                  {{ selectedHistory ? `${selectedHistory.stationName || '-'} / ${selectedHistory.signalType || '-'}` : '暂无可回放历史帧' }}
+                </div>
+                <div class="hero-subtitle">
+                  {{ selectedHistory ? `${selectedHistory.taskName || '-'} · ${formatTime(selectedHistory.captureTime)}` : '请先通过上方筛选条件加载历史帧' }}
+                </div>
               </div>
 
-              <div class="speed-box">
-                <span class="speed-label">循环</span>
-                <el-switch v-model="loopReplay" />
+              <div class="hero-right">
+                <div class="hero-frame-badge">
+                  <span class="hero-frame-label">当前帧</span>
+                  <span class="hero-frame-value">{{ replayRecords.length ? currentFrameIndex + 1 : 0 }}</span>
+                </div>
+                <div class="hero-state-badge" :class="isPlaying ? 'state-playing' : 'state-paused'">
+                  {{ isPlaying ? '回放中' : '已暂停' }}
+                </div>
+              </div>
+            </div>
+
+            <div class="replay-toolbar">
+              <div class="toolbar-left">
+                <el-button-group>
+                  <el-button @click="prevFrame" :disabled="!replayRecords.length">上一帧</el-button>
+                  <el-button type="primary" @click="toggleReplay" :disabled="replayRecords.length <= 1">
+                    {{ isPlaying ? '暂停回放' : '开始回放' }}
+                  </el-button>
+                  <el-button @click="nextFrame" :disabled="!replayRecords.length">下一帧</el-button>
+                </el-button-group>
+              </div>
+
+              <div class="toolbar-right">
+                <div class="speed-box">
+                  <span class="speed-label">速度</span>
+                  <el-select v-model="replaySpeed" style="width: 110px" @change="handleSpeedChange">
+                    <el-option :value="400" label="2.5x" />
+                    <el-option :value="600" label="2x" />
+                    <el-option :value="1000" label="1x" />
+                    <el-option :value="1500" label="0.75x" />
+                    <el-option :value="2000" label="0.5x" />
+                  </el-select>
+                </div>
+
+                <div class="speed-box">
+                  <span class="speed-label">循环</span>
+                  <el-switch v-model="loopReplay" />
+                </div>
+              </div>
+            </div>
+
+            <div class="timeline-panel" v-if="replayRecords.length">
+              <div class="timeline-header">
+                <div class="timeline-frame-text">
+                  第 {{ currentFrameIndex + 1 }} 帧 / 共 {{ replayRecords.length }} 帧
+                </div>
+                <div class="timeline-progress-text">{{ progressPercent }}%</div>
+              </div>
+
+              <el-slider
+                v-model="currentFrameIndex"
+                :min="0"
+                :max="replayRecords.length - 1"
+                :show-tooltip="false"
+                @input="handleSliderChange"
+              />
+
+              <div class="timeline-tips">
+                <span>{{ replayRecords[0] ? formatTime(replayRecords[0].captureTime) : '-' }}</span>
+                <span>{{ selectedHistory ? `当前 ${formatTime(selectedHistory.captureTime)}` : '-' }}</span>
+                <span>{{ replayRecords.length ? formatTime(replayRecords[replayRecords.length - 1].captureTime) : '-' }}</span>
+              </div>
+            </div>
+
+            <div class="chart-stage">
+              <div ref="chartRef" class="chart-box replay-chart"></div>
+
+              <div v-if="!selectedHistory" class="chart-empty">
+                <div class="chart-empty-title">暂无历史回放数据</div>
+                <div class="chart-empty-desc">请通过站点、时间范围和信号制式筛选后加载可回放帧。</div>
+              </div>
+
+              <div v-if="selectedHistory" class="chart-overlay">
+                <div class="overlay-chip">
+                  <div class="overlay-chip-label">峰值功率</div>
+                  <div class="overlay-chip-value">{{ formatNumber(selectedHistory.peakPowerDbm, 'dBm') }}</div>
+                </div>
+                <div class="overlay-chip">
+                  <div class="overlay-chip-label">中心频率</div>
+                  <div class="overlay-chip-value">{{ formatNumber(selectedHistory.centerFreqMhz, 'MHz') }}</div>
+                </div>
+                <div class="overlay-chip">
+                  <div class="overlay-chip-label">SNR</div>
+                  <div class="overlay-chip-value">{{ formatNumber(selectedHistory.snrDb, 'dB') }}</div>
+                </div>
+                <div class="overlay-chip">
+                  <div class="overlay-chip-label">AI标签</div>
+                  <div class="overlay-chip-value">{{ selectedHistory.aiLabel || '-' }}</div>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="selectedHistory" class="detail-scroll-area">
+              <div class="detail-grid">
+                <div class="detail-card">
+                  <div class="detail-card-label">站点 / 设备</div>
+                  <div class="detail-card-value">{{ selectedHistory.stationName || '-' }}</div>
+                  <div class="detail-card-sub">{{ selectedHistory.deviceName || '-' }}</div>
+                </div>
+
+                <div class="detail-card">
+                  <div class="detail-card-label">任务 / 制式</div>
+                  <div class="detail-card-value">{{ selectedHistory.taskName || '-' }}</div>
+                  <div class="detail-card-sub">{{ selectedHistory.signalType || '-' }} · {{ selectedHistory.channelModel || '-' }}</div>
+                </div>
+
+                <div class="detail-card">
+                  <div class="detail-card-label">推理模式</div>
+                  <div class="detail-card-value">{{ formatAiMode(selectedHistory.aiActualMode) }}</div>
+                  <div class="detail-card-sub">请求 {{ formatAiMode(selectedHistory.aiRequestMode) }}</div>
+                </div>
+
+                <div class="detail-card">
+                  <div class="detail-card-label">Fallback / 模型</div>
+                  <div class="detail-card-value">{{ normalizeFallbackFlag(selectedHistory.aiFallbackUsed) === 1 ? '已发生' : '未发生' }}</div>
+                  <div class="detail-card-sub">{{ selectedHistory.aiModelName || '-' }}</div>
+                </div>
+
+                <div class="detail-card">
+                  <div class="detail-card-label">带宽 / 占用带宽</div>
+                  <div class="detail-card-value">{{ formatNumber(selectedHistory.bandwidthKhz, 'kHz') }}</div>
+                  <div class="detail-card-sub">{{ formatNumber(selectedHistory.occupiedBandwidthKhz, 'kHz') }}</div>
+                </div>
+
+                <div class="detail-card">
+                  <div class="detail-card-label">采集时间</div>
+                  <div class="detail-card-value">{{ formatTime(selectedHistory.captureTime) }}</div>
+                  <div class="detail-card-sub">{{ selectedHistory.alarmFlag === 1 ? '该帧触发异常告警' : '该帧未触发告警' }}</div>
+                </div>
+              </div>
+
+              <div class="ai-reason-panel">
+                <div class="ai-reason-title">AI 说明</div>
+                <div class="ai-reason-text">{{ selectedHistory.aiReason || '当前帧暂无额外 AI 说明。' }}</div>
               </div>
             </div>
           </div>
-
-          <div class="frame-progress" v-if="replayRecords.length">
-            <div class="frame-label">
-              第 {{ currentFrameIndex + 1 }} 帧 / 共 {{ replayRecords.length }} 帧
-            </div>
-            <el-slider
-              v-model="currentFrameIndex"
-              :min="0"
-              :max="replayRecords.length - 1"
-              :show-tooltip="false"
-              @input="handleSliderChange"
-            />
-          </div>
-
-          <div ref="chartRef" class="chart-box replay-chart"></div>
-
-          <div v-if="selectedHistory" class="selected-summary">
-            <div class="selected-summary-title">
-              {{ selectedHistory.stationName || '-' }} / {{ selectedHistory.deviceName || '-' }}
-            </div>
-            <div class="selected-summary-sub">
-              {{ selectedHistory.taskName || '-' }} · {{ selectedHistory.signalType || '-' }} · {{ formatTime(selectedHistory.captureTime) }}
-            </div>
-          </div>
-
-          <el-descriptions
-            v-if="selectedHistory"
-            :column="2"
-            border
-            style="margin-top: 16px;"
-          >
-            <el-descriptions-item label="站点名称">{{ selectedHistory.stationName || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="设备名称">{{ selectedHistory.deviceName || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="任务名称">{{ selectedHistory.taskName || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="信号制式">{{ selectedHistory.signalType || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="中心频率">{{ selectedHistory.centerFreqMhz || '-' }} MHz</el-descriptions-item>
-            <el-descriptions-item label="带宽">{{ selectedHistory.bandwidthKhz || '-' }} kHz</el-descriptions-item>
-            <el-descriptions-item label="信道模型">{{ selectedHistory.channelModel || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="AI识别">{{ selectedHistory.aiLabel || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="请求模式">
-              <el-tag type="info" effect="plain">{{ formatAiMode(selectedHistory.aiRequestMode) }}</el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="实际推理">
-              <el-tag :type="formatAiMode(selectedHistory.aiActualMode) === 'CNN' ? 'primary' : 'success'">
-                {{ formatAiMode(selectedHistory.aiActualMode) }}
-              </el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="Fallback">
-              <el-tag :type="normalizeFallbackFlag(selectedHistory.aiFallbackUsed) === 1 ? 'danger' : 'success'">
-                {{ normalizeFallbackFlag(selectedHistory.aiFallbackUsed) === 1 ? '已发生' : '未发生' }}
-              </el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="实际模型">{{ selectedHistory.aiModelName || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="AI说明" :span="2">{{ selectedHistory.aiReason || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="峰值功率">{{ selectedHistory.peakPowerDbm || '-' }} dBm</el-descriptions-item>
-            <el-descriptions-item label="SNR">{{ selectedHistory.snrDb || '-' }} dB</el-descriptions-item>
-            <el-descriptions-item label="占用带宽">{{ selectedHistory.occupiedBandwidthKhz || '-' }} kHz</el-descriptions-item>
-            <el-descriptions-item label="采集时间">{{ formatTime(selectedHistory.captureTime) }}</el-descriptions-item>
-          </el-descriptions>
         </el-card>
       </el-col>
     </el-row>
@@ -326,12 +390,28 @@ const loopReplay = ref(true)
 
 let chartInstance = null
 let replayTimer = null
+let chartTweenFrame = null
+let lastRenderedPoints = []
 
 const alarmSnapshotCount = computed(() => pageState.records.filter(item => item.alarmFlag === 1).length)
+
+const progressPercent = computed(() => {
+  if (!replayRecords.value.length) return 0
+  return Number((((currentFrameIndex.value + 1) / replayRecords.value.length) * 100).toFixed(0))
+})
 
 const formatTime = (value) => {
   if (!value) return '-'
   return String(value).replace('T', ' ')
+}
+
+const formatNumber = (value, suffix = '') => {
+  if (value === null || value === undefined || value === '') return '-'
+  const num = Number(value)
+  if (Number.isNaN(num)) {
+    return suffix ? `${value} ${suffix}` : String(value)
+  }
+  return suffix ? `${num} ${suffix}` : String(num)
 }
 
 const formatAiMode = (value) => {
@@ -355,11 +435,15 @@ const sortFramesByTime = (list) => {
 
 const parsePowerPoints = (value) => {
   if (!value) return []
-  if (Array.isArray(value)) return value.map(Number)
+  if (Array.isArray(value)) {
+    return value.map(item => Number(item)).filter(item => !Number.isNaN(item))
+  }
 
   try {
     const parsed = JSON.parse(value)
-    return Array.isArray(parsed) ? parsed.map(Number) : []
+    return Array.isArray(parsed)
+      ? parsed.map(item => Number(item)).filter(item => !Number.isNaN(item))
+      : []
   } catch (error) {
     return []
   }
@@ -381,116 +465,179 @@ const buildXAxis = (points, centerFreqMhz, bandwidthKhz) => {
   return points.map((_, index) => Number((start + step * index).toFixed(3)))
 }
 
-const renderChart = () => {
-  if (!chartRef.value) return
-
+const ensureChart = () => {
+  if (!chartRef.value) return null
   if (!chartInstance) {
     chartInstance = echarts.init(chartRef.value)
   }
+  return chartInstance
+}
 
-  const points = parsePowerPoints(selectedHistory.value?.powerPointsJson)
-  const xData = buildXAxis(points, selectedHistory.value?.centerFreqMhz, selectedHistory.value?.bandwidthKhz)
-  const avgValue = points.length
-    ? Number((points.reduce((sum, item) => sum + Number(item || 0), 0) / points.length).toFixed(2))
-    : 0
+const stopChartTween = () => {
+  if (chartTweenFrame) {
+    cancelAnimationFrame(chartTweenFrame)
+    chartTweenFrame = null
+  }
+}
 
-  chartInstance.setOption({
+const getSeriesTheme = (record) => {
+  const isAlarm = Number(record?.alarmFlag || 0) === 1
+  return isAlarm
+    ? {
+        line: '#fb7185',
+        glow: 'rgba(251, 113, 133, 0.28)',
+        areaTop: 'rgba(251, 113, 133, 0.32)',
+        areaMid: 'rgba(251, 113, 133, 0.10)',
+        areaBottom: 'rgba(251, 113, 133, 0.02)',
+        mark: '#f97316',
+        avg: '#f59e0b',
+        axis: '#cbd5e1',
+        text: '#cbd5e1',
+        split: 'rgba(148, 163, 184, 0.14)'
+      }
+    : {
+        line: '#60a5fa',
+        glow: 'rgba(96, 165, 250, 0.26)',
+        areaTop: 'rgba(96, 165, 250, 0.30)',
+        areaMid: 'rgba(59, 130, 246, 0.10)',
+        areaBottom: 'rgba(59, 130, 246, 0.02)',
+        mark: '#34d399',
+        avg: '#fbbf24',
+        axis: '#cbd5e1',
+        text: '#cbd5e1',
+        split: 'rgba(148, 163, 184, 0.14)'
+      }
+}
+
+const createChartOption = ({ points, xData, avgValue, previousPoints, record }) => {
+  const theme = getSeriesTheme(record)
+  const hasPrev = Array.isArray(previousPoints) && previousPoints.length === points.length && points.length > 0
+
+  return {
     backgroundColor: 'transparent',
-    animation: true,
-    animationDuration: 650,
+    animation: false,
     tooltip: {
       trigger: 'axis',
-      backgroundColor: 'rgba(15, 23, 42, 0.92)',
+      axisPointer: {
+        type: 'line',
+        lineStyle: {
+          color: 'rgba(148, 163, 184, 0.45)',
+          width: 1
+        }
+      },
+      backgroundColor: 'rgba(15, 23, 42, 0.94)',
       borderColor: 'rgba(96, 165, 250, 0.35)',
       borderWidth: 1,
+      padding: [10, 12],
       textStyle: {
         color: '#e5eefc'
       },
       formatter: (params) => {
-        const item = params?.[0]
-        if (!item) return ''
+        const current = params?.find(item => item.seriesName === '当前帧')
+        const previous = params?.find(item => item.seriesName === '上一帧')
+        const currentValue = current?.data ?? '-'
+        const prevValue = previous?.data ?? '-'
         return `
-          <div style="padding:4px 2px;">
-            <div style="font-weight:700;margin-bottom:6px;">历史频谱帧</div>
-            <div>频率：${item.axisValue}</div>
-            <div>功率：${item.data} dBm</div>
+          <div style="padding:2px 0;">
+            <div style="font-weight:700;margin-bottom:6px;">频谱回放帧</div>
+            <div>频率：${current?.axisValue ?? '-'}</div>
+            <div>当前帧：${currentValue} dBm</div>
+            ${previous ? `<div>上一帧：${prevValue} dBm</div>` : ''}
           </div>
         `
       }
     },
     grid: {
-      left: 55,
-      right: 24,
-      top: 36,
-      bottom: 62
+      left: 54,
+      right: 18,
+      top: 28,
+      bottom: 54
     },
     xAxis: {
       type: 'category',
       data: xData,
       boundaryGap: false,
-      name: points.length ? '频率 / 采样点' : '',
+      name: points.length ? '频率 / MHz' : '',
+      nameGap: 26,
       nameTextStyle: {
-        color: '#7c8aa5'
+        color: theme.text,
+        fontSize: 12,
+        padding: [8, 0, 0, 0]
       },
       axisLine: {
         lineStyle: {
-          color: '#d7e3f2'
+          color: theme.axis
         }
       },
+      axisTick: {
+        show: false
+      },
       axisLabel: {
-        color: '#73839d'
+        color: theme.text,
+        fontSize: 11
       }
     },
     yAxis: {
       type: 'value',
-      name: '功率 (dBm)',
+      name: '功率 / dBm',
       nameTextStyle: {
-        color: '#7c8aa5'
+        color: theme.text,
+        fontSize: 12
       },
       axisLabel: {
-        color: '#73839d'
+        color: theme.text,
+        fontSize: 11
       },
       splitLine: {
         lineStyle: {
-          color: 'rgba(148, 163, 184, 0.18)',
+          color: theme.split,
           type: 'dashed'
         }
       }
     },
-    dataZoom: [
-      { type: 'inside' },
-      {
-        type: 'slider',
-        height: 16,
-        bottom: 16,
-        borderColor: 'transparent',
-        backgroundColor: '#eef4fb',
-        fillerColor: 'rgba(99, 102, 241, 0.16)',
-        moveHandleSize: 0
-      }
-    ],
     series: [
+      ...(hasPrev
+        ? [
+            {
+              name: '上一帧',
+              type: 'line',
+              smooth: 0.3,
+              symbol: 'none',
+              silent: true,
+              z: 1,
+              lineStyle: {
+                width: 1.5,
+                type: 'dashed',
+                color: 'rgba(148, 163, 184, 0.72)'
+              },
+              data: previousPoints
+            }
+          ]
+        : []),
       {
-        name: '历史频谱',
+        name: '当前帧',
         type: 'line',
-        smooth: true,
+        smooth: 0.35,
         symbol: 'none',
+        z: 3,
         lineStyle: {
           width: 3,
-          color: '#4f46e5'
+          color: theme.line,
+          shadowColor: theme.glow,
+          shadowBlur: 12
         },
         areaStyle: {
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(99, 102, 241, 0.36)' },
-            { offset: 0.7, color: 'rgba(129, 140, 248, 0.12)' },
-            { offset: 1, color: 'rgba(129, 140, 248, 0.02)' }
+            { offset: 0, color: theme.areaTop },
+            { offset: 0.65, color: theme.areaMid },
+            { offset: 1, color: theme.areaBottom }
           ])
         },
         markPoint: points.length
           ? {
               symbol: 'circle',
-              symbolSize: 40,
-              itemStyle: { color: '#ef4444' },
+              symbolSize: 34,
+              itemStyle: { color: theme.mark },
               label: {
                 color: '#fff',
                 fontWeight: 700,
@@ -504,11 +651,11 @@ const renderChart = () => {
               silent: true,
               symbol: 'none',
               lineStyle: {
-                color: '#f59e0b',
+                color: theme.avg,
                 type: 'dashed'
               },
               label: {
-                color: '#b45309',
+                color: theme.avg,
                 formatter: `均值 ${avgValue}`
               },
               data: [{ yAxis: avgValue }]
@@ -517,7 +664,84 @@ const renderChart = () => {
         data: points
       }
     ]
-  })
+  }
+}
+
+const renderChartOption = (points, record, previousPoints = []) => {
+  const chart = ensureChart()
+  if (!chart) return
+
+  const xData = buildXAxis(points, record?.centerFreqMhz, record?.bandwidthKhz)
+  const avgValue = points.length
+    ? Number((points.reduce((sum, item) => sum + Number(item || 0), 0) / points.length).toFixed(2))
+    : 0
+
+  chart.setOption(
+    createChartOption({
+      points,
+      xData,
+      avgValue,
+      previousPoints,
+      record
+    }),
+    true
+  )
+  chart.resize()
+}
+
+const renderSelectedHistory = async (animateTransition = true) => {
+  await nextTick()
+  const chart = ensureChart()
+  if (!chart) return
+
+  const targetPoints = parsePowerPoints(selectedHistory.value?.powerPointsJson)
+
+  if (!selectedHistory.value || !targetPoints.length) {
+    stopChartTween()
+    lastRenderedPoints = []
+    chart.clear()
+    chart.resize()
+    return
+  }
+
+  const previousPoints =
+    Array.isArray(lastRenderedPoints) && lastRenderedPoints.length === targetPoints.length
+      ? [...lastRenderedPoints]
+      : [...targetPoints]
+
+  if (!animateTransition || previousPoints.length !== targetPoints.length) {
+    stopChartTween()
+    renderChartOption(targetPoints, selectedHistory.value, previousPoints)
+    lastRenderedPoints = [...targetPoints]
+    return
+  }
+
+  stopChartTween()
+
+  const start = performance.now()
+  const duration = 340
+  const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3)
+
+  const step = (now) => {
+    const progress = Math.min(1, (now - start) / duration)
+    const eased = easeOutCubic(progress)
+    const mixed = targetPoints.map((value, index) => {
+      const from = previousPoints[index]
+      return Number((from + (value - from) * eased).toFixed(2))
+    })
+
+    renderChartOption(mixed, selectedHistory.value, previousPoints)
+
+    if (progress < 1) {
+      chartTweenFrame = requestAnimationFrame(step)
+    } else {
+      chartTweenFrame = null
+      renderChartOption(targetPoints, selectedHistory.value, previousPoints)
+      lastRenderedPoints = [...targetPoints]
+    }
+  }
+
+  chartTweenFrame = requestAnimationFrame(step)
 }
 
 const stopReplay = () => {
@@ -528,13 +752,12 @@ const stopReplay = () => {
   }
 }
 
-const syncFrameByIndex = async (index) => {
+const syncFrameByIndex = async (index, animateTransition = true) => {
   const row = replayRecords.value[index]
   if (!row) return
 
   selectedHistory.value = row
-  await nextTick()
-  renderChart()
+  await renderSelectedHistory(animateTransition)
 
   if (tableRef.value) {
     const matched = pageState.records.find(item => item.id === row.id)
@@ -568,7 +791,7 @@ const scheduleNextFrame = () => {
     }
 
     currentFrameIndex.value = nextIndex
-    await syncFrameByIndex(nextIndex)
+    await syncFrameByIndex(nextIndex, true)
     scheduleNextFrame()
   }, Number(replaySpeed.value))
 }
@@ -585,7 +808,7 @@ const toggleReplay = async () => {
   }
 
   isPlaying.value = true
-  await syncFrameByIndex(currentFrameIndex.value)
+  await syncFrameByIndex(currentFrameIndex.value, true)
   scheduleNextFrame()
 }
 
@@ -594,7 +817,7 @@ const prevFrame = async () => {
   if (!replayRecords.value.length) return
 
   currentFrameIndex.value = Math.max(0, currentFrameIndex.value - 1)
-  await syncFrameByIndex(currentFrameIndex.value)
+  await syncFrameByIndex(currentFrameIndex.value, true)
 }
 
 const nextFrame = async () => {
@@ -602,12 +825,12 @@ const nextFrame = async () => {
   if (!replayRecords.value.length) return
 
   currentFrameIndex.value = Math.min(replayRecords.value.length - 1, currentFrameIndex.value + 1)
-  await syncFrameByIndex(currentFrameIndex.value)
+  await syncFrameByIndex(currentFrameIndex.value, true)
 }
 
 const handleSliderChange = async (value) => {
   stopReplay()
-  await syncFrameByIndex(value)
+  await syncFrameByIndex(value, true)
 }
 
 const handleSpeedChange = () => {
@@ -634,6 +857,13 @@ const loadStationOptions = async () => {
   stationOptions.value = res.data || []
 }
 
+const normalizeRecord = (item) => ({
+  ...item,
+  aiRequestMode: formatAiMode(item.aiRequestMode),
+  aiActualMode: formatAiMode(item.aiActualMode),
+  aiFallbackUsed: normalizeFallbackFlag(item.aiFallbackUsed)
+})
+
 const loadPage = async () => {
   try {
     loading.value = true
@@ -641,12 +871,7 @@ const loadPage = async () => {
     const data = res.data || {}
 
     pageState.total = data.total || 0
-    pageState.records = (data.records || []).map(item => ({
-      ...item,
-      aiRequestMode: formatAiMode(item.aiRequestMode),
-      aiActualMode: formatAiMode(item.aiActualMode),
-      aiFallbackUsed: normalizeFallbackFlag(item.aiFallbackUsed)
-    }))
+    pageState.records = (data.records || []).map(normalizeRecord)
   } catch (error) {
     console.error(error)
     ElMessage.error(error?.message || '历史列表加载失败')
@@ -667,7 +892,7 @@ const loadReplayTimeline = async () => {
     while (true) {
       const res = await getHistoryPageApi(buildHistoryParams(current, pageSize))
       const data = res.data || {}
-      const records = data.records || []
+      const records = (data.records || []).map(normalizeRecord)
 
       total = data.total || records.length
       allRecords = allRecords.concat(records)
@@ -684,13 +909,12 @@ const loadReplayTimeline = async () => {
     if (replayRecords.value.length > 0) {
       currentFrameIndex.value = 0
       selectedHistory.value = replayRecords.value[0]
-      await nextTick()
-      renderChart()
+      await renderSelectedHistory(false)
     } else {
       currentFrameIndex.value = 0
       selectedHistory.value = null
-      await nextTick()
-      renderChart()
+      lastRenderedPoints = []
+      await renderSelectedHistory(false)
     }
   } catch (error) {
     console.error(error)
@@ -711,11 +935,10 @@ const handleRowSelect = async (row) => {
   const index = replayRecords.value.findIndex(item => item.id === row.id)
   if (index >= 0) {
     currentFrameIndex.value = index
-    await syncFrameByIndex(index)
+    await syncFrameByIndex(index, true)
   } else {
     selectedHistory.value = row
-    await nextTick()
-    renderChart()
+    await renderSelectedHistory(true)
   }
 }
 
@@ -751,6 +974,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   stopReplay()
+  stopChartTween()
   window.removeEventListener('resize', handleResize)
 
   if (chartInstance) {
@@ -761,13 +985,30 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.top-metrics {
+.page-container {
+  min-height: calc(100vh - 112px);
+}
+
+.top-metrics,
+.query-card {
   margin-bottom: 16px;
 }
 
 .metric-card {
   border-radius: 20px;
   overflow: hidden;
+  position: relative;
+}
+
+.metric-card::after {
+  content: '';
+  position: absolute;
+  right: -18px;
+  bottom: -18px;
+  width: 94px;
+  height: 94px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .metric-label {
@@ -819,6 +1060,11 @@ onUnmounted(() => {
   background: linear-gradient(90deg, #22c55e, #86efac);
 }
 
+.page-card,
+.equal-height-card {
+  border-radius: 20px;
+}
+
 .card-header {
   display: flex;
   align-items: center;
@@ -844,26 +1090,48 @@ onUnmounted(() => {
   gap: 10px;
 }
 
-.equal-height-card,
-.history-list-card {
-  height: 100%;
+.filter-form {
+  margin-bottom: -6px;
 }
 
-.equal-height-card :deep(.el-card__body),
-.history-list-card :deep(.el-card__body) {
-  height: calc(100% - 56px);
+.workbench-row {
+  display: flex;
+  align-items: stretch;
+}
+
+.workbench-col {
+  display: flex;
+  align-self: stretch;
+}
+
+.equal-height-card {
+  width: 100%;
   display: flex;
   flex-direction: column;
+}
+
+.equal-height-card :deep(.el-card__header) {
+  flex-shrink: 0;
+}
+
+.equal-height-card :deep(.el-card__body) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .history-list-content {
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-height: 0;
 }
 
 .history-table-wrap {
   flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -871,7 +1139,113 @@ onUnmounted(() => {
   height: 100%;
 }
 
+.table-sub-text {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #8a97ab;
+}
+
+.pagination-wrap {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.replay-card-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.replay-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.hero-normal {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(14, 165, 233, 0.06));
+}
+
+.hero-alert {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.10), rgba(249, 115, 22, 0.06));
+}
+
+.hero-kicker {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.hero-title {
+  margin-top: 6px;
+  font-size: 18px;
+  font-weight: 800;
+  color: #111827;
+  line-height: 1.3;
+}
+
+.hero-subtitle {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.6;
+}
+
+.hero-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.hero-frame-badge {
+  min-width: 84px;
+  padding: 10px 14px;
+  border-radius: 16px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.hero-frame-label {
+  display: block;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.hero-frame-value {
+  display: block;
+  margin-top: 4px;
+  font-size: 22px;
+  font-weight: 800;
+  color: #111827;
+}
+
+.hero-state-badge {
+  padding: 10px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.state-playing {
+  color: #166534;
+  background: rgba(34, 197, 94, 0.14);
+}
+
+.state-paused {
+  color: #1d4ed8;
+  background: rgba(59, 130, 246, 0.12);
+}
+
 .replay-toolbar {
+  margin-top: 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -879,10 +1253,12 @@ onUnmounted(() => {
   flex-wrap: wrap;
 }
 
+.toolbar-left,
 .toolbar-right {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .speed-box {
@@ -896,44 +1272,210 @@ onUnmounted(() => {
   color: #6b7280;
 }
 
-.frame-progress {
-  margin-top: 16px;
+.timeline-panel {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #f8fbff, #ffffff);
+  border: 1px solid #e5eefb;
 }
 
-.frame-label {
-  margin-bottom: 8px;
-  color: #6b7280;
+.timeline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.timeline-frame-text,
+.timeline-progress-text {
   font-size: 13px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.timeline-tips {
+  margin-top: 10px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.chart-stage {
+  position: relative;
+  margin-top: 14px;
+  flex: 1;
+  min-height: 360px;
+  border-radius: 22px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top right, rgba(96, 165, 250, 0.14), transparent 30%),
+    linear-gradient(180deg, #0f172a 0%, #111827 100%);
+  border: 1px solid rgba(148, 163, 184, 0.16);
 }
 
 .replay-chart {
-  margin-top: 16px;
-  height: 360px;
+  width: 100%;
+  height: 100%;
+  min-height: 360px;
 }
 
-.selected-summary {
-  margin-top: 16px;
-  padding: 14px 16px;
-  border-radius: 16px;
-  background: linear-gradient(135deg, #eff6ff, #f8fbff);
-  border: 1px solid #dbeafe;
+.chart-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #e2e8f0;
+  text-align: center;
+  z-index: 2;
 }
 
-.selected-summary-title {
-  font-size: 16px;
+.chart-empty-title {
+  font-size: 22px;
   font-weight: 800;
-  color: #1f2a37;
 }
 
-.selected-summary-sub {
-  margin-top: 8px;
+.chart-empty-desc {
+  max-width: 360px;
   font-size: 13px;
+  line-height: 1.8;
+  color: #cbd5e1;
+}
+
+.chart-overlay {
+  position: absolute;
+  right: 16px;
+  top: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(108px, 1fr));
+  gap: 10px;
+  z-index: 2;
+}
+
+.overlay-chip {
+  padding: 10px 12px;
+  border-radius: 14px;
+  backdrop-filter: blur(10px);
+  background: rgba(15, 23, 42, 0.52);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.overlay-chip-label {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.overlay-chip-value {
+  margin-top: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.detail-scroll-area {
+  margin-top: 14px;
+  flex-shrink: 0;
+  overflow: auto;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.detail-card {
+  padding: 14px 14px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #f8fbff, #ffffff);
+  border: 1px solid #e6edf8;
+}
+
+.detail-card-label {
+  font-size: 12px;
   color: #64748b;
 }
 
-.pagination-wrap {
-  margin-top: 16px;
-  display: flex;
-  justify-content: flex-end;
+.detail-card-value {
+  margin-top: 8px;
+  font-size: 15px;
+  font-weight: 800;
+  color: #111827;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.detail-card-sub {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.ai-reason-panel {
+  margin-top: 12px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: #f8fafc;
+  border: 1px solid #eef2f7;
+}
+
+.ai-reason-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+}
+
+.ai-reason-text {
+  margin-top: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.8;
+  font-size: 13px;
+  color: #475569;
+}
+
+@media (max-width: 1400px) {
+  .chart-overlay {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1200px) {
+  .workbench-row {
+    display: block;
+  }
+
+  .workbench-col {
+    display: block;
+    margin-bottom: 16px;
+  }
+
+  .replay-chart,
+  .chart-stage {
+    min-height: 320px;
+  }
+
+  .hero-right {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .replay-hero {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 </style>
