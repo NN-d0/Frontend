@@ -177,6 +177,10 @@
               <span class="status-value">{{ formatNumber(monitorState.peakPowerDbm, 'dBm') }}</span>
             </div>
             <div class="status-item">
+              <span class="status-label">峰值频率</span>
+              <span class="status-value">{{ peakFrequencyText }}</span>
+            </div>
+            <div class="status-item">
               <span class="status-label">SNR</span>
               <span class="status-value">{{ formatNumber(monitorState.snrDb, 'dB') }}</span>
             </div>
@@ -412,6 +416,61 @@ const buildXAxis = (points, centerFreqMhz, bandwidthKhz) => {
   return points.map((_, index) => Number((start + index * step).toFixed(3)))
 }
 
+const buildDynamicYAxis = (points) => {
+  if (!points || !points.length) {
+    return {
+      min: -100,
+      max: -20,
+      interval: 20
+    }
+  }
+
+  const validPoints = points
+    .map(item => Number(item))
+    .filter(item => !Number.isNaN(item))
+
+  if (!validPoints.length) {
+    return {
+      min: -100,
+      max: -20,
+      interval: 20
+    }
+  }
+
+  const minPower = Math.min(...validPoints)
+  const maxPower = Math.max(...validPoints)
+  const rawRange = maxPower - minPower
+  const displayRange = Math.max(rawRange, 10)
+  const center = (maxPower + minPower) / 2
+  const yMin = Math.floor(center - displayRange / 2 - 1)
+  const yMax = Math.ceil(center + displayRange / 2 + 1)
+
+  return {
+    min: yMin,
+    max: yMax,
+    interval: Math.ceil((yMax - yMin) / 5)
+  }
+}
+
+
+const peakFreqMhz = computed(() => {
+  const points = parsePoints(monitorState.powerPointsJson)
+  if (!points.length) return null
+
+  const xAxis = buildXAxis(points, monitorState.centerFreqMhz, monitorState.bandwidthKhz)
+  let peakIndex = 0
+  for (let index = 1; index < points.length; index += 1) {
+    if (points[index] > points[peakIndex]) {
+      peakIndex = index
+    }
+  }
+
+  const freq = Number(xAxis[peakIndex])
+  return Number.isNaN(freq) ? null : freq
+})
+
+const peakFrequencyText = computed(() => formatNumber(peakFreqMhz.value, 'MHz'))
+
 const ensureChart = () => {
   if (!lineChartRef.value) return null
   if (!chartInstance) {
@@ -427,16 +486,31 @@ const renderChart = async () => {
 
   const points = parsePoints(monitorState.powerPointsJson)
   const xAxis = buildXAxis(points, monitorState.centerFreqMhz, monitorState.bandwidthKhz)
+  const yAxisRange = buildDynamicYAxis(points)
 
   chart.setOption({
     animation: false,
     tooltip: {
-      trigger: 'axis'
+      trigger: 'axis',
+      formatter: (params) => {
+        if (!params || !params.length) return ''
+
+        const item = params[0]
+        const freq = item.axisValue
+        const power = item.data
+
+        return `
+          <div>
+            <div>频率：${freq} MHz</div>
+            <div>功率：${power} dBm</div>
+          </div>
+        `
+      }
     },
     grid: {
-      left: 56,
+      left: 64,
       right: 24,
-      top: 32,
+      top: 36,
       bottom: 60
     },
     xAxis: {
@@ -445,11 +519,32 @@ const renderChart = async () => {
       data: xAxis,
       name: points.length ? '频率 / MHz' : '',
       nameLocation: 'middle',
-      nameGap: 36
+      nameGap: 36,
+      axisLabel: {
+        formatter: (value) => {
+          const num = Number(value)
+          return Number.isNaN(num) ? value : num.toFixed(1)
+        }
+      }
     },
     yAxis: {
       type: 'value',
-      name: '功率 / dBm'
+      name: '功率 / dBm',
+
+      // 核心修改：根据当前频谱数据动态缩放 Y 轴
+      min: yAxisRange.min,
+      max: yAxisRange.max,
+      interval: yAxisRange.interval,
+
+      axisLabel: {
+        formatter: (value) => `${value}`
+      },
+      splitLine: {
+        lineStyle: {
+          type: 'solid',
+          color: '#d6deef'
+        }
+      }
     },
     series: [
       {
@@ -464,10 +559,19 @@ const renderChart = async () => {
         areaStyle: {
           color: 'rgba(37, 99, 235, 0.12)'
         },
+        markPoint: {
+          symbolSize: 52,
+          data: [
+            { type: 'max', name: '峰值' }
+          ],
+          label: {
+            formatter: '峰值'
+          }
+        },
         data: points
       }
     ]
-  })
+  }, true)
 
   chart.resize()
 }
